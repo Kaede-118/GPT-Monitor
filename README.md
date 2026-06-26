@@ -27,10 +27,31 @@
 
 ## 📸 效果预览
 
-| 正常模型（GPT-5.5） | 降智模型（mini） |
-|-------------------|-----------------|
-| 🟢 绿色横幅 + 绿色图标 + 桌面通知 | 🔴 红色横幅 + 红色图标 + 桌面通知 |
+### 扩展弹窗
 
+![扩展弹窗](sample%20images/菜单.png)
+![使用限制说明](sample%20images/菜单-使用限制说明.png)
+
+### 模型标记对比
+
+![官方模型 & 扩展标记后](sample%20images/官方模型&扩展标记后.png)
+
+### 正常模型（GPT-5.5）
+
+| 横幅 | Toast 通知 |
+|------|-----------|
+| ![正常横幅](sample%20images/正常banner.png) | ![正常toast](sample%20images/正常toast.png) |
+
+### 降智模型（mini）
+
+| 横幅 | Toast 通知 |
+|------|-----------|
+| ![降智横幅](sample%20images/降智banner.png) | ![降智toast](sample%20images/降智toast.png) |
+
+### 切换效果
+
+![切换为正常模型预览](sample%20images/切换为正常模型预览.png)
+![切换为降智模型预览](sample%20images/切换为降智模型预览.png)
 ---
 
 ## 🛠️ 安装步骤
