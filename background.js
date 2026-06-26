@@ -79,7 +79,9 @@ function doInject(tabId) {
             target: { tabId: tabId },
             world: 'MAIN',
             func: function(storageData) {
-                console.log('💉 注入 SSE 拦截器, storage:', storageData);
+                const _iid = Math.random().toString(36).slice(2, 6);
+                const _ts = () => { const d=new Date(); return `${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`; };
+                console.log(`[${_ts()}] 💉 [${_iid}] 注入 SSE 拦截器, storage:`, storageData);
 
                 // ====================================
                 // 页面主世界状态（从 storage 初始化）
@@ -93,7 +95,7 @@ function doInject(tabId) {
                 let logoBadgeEl = null;
                 let dropdownEl = null;
 
-                console.log('📊 初始化状态:', { currentModel, historyCount: modelHistory.length, detected });
+                console.log(`📊 [${_ts()}] [${_iid}] 初始化状态:`, { currentModel, historyCount: modelHistory.length, detected });
 
                 // 监听后台推送的消息计数更新
                 window.addEventListener('message', function(event) {
@@ -147,13 +149,32 @@ function doInject(tabId) {
                 // 显示横幅
                 // ====================================
                 function showBanner(modelName, isMini) {
-                    const oldBanner = document.getElementById('gpt-model-banner');
-                    if (oldBanner) oldBanner.remove();
+                    const existing = document.getElementById('gpt-model-banner');
+                    if (existing) {
+                        if (existing.dataset.model === modelName) {
+                            console.log(`⏭️ [${_ts()}] [${_iid}] 同模型横幅已存在，跳过`);
+                            return;
+                        }
+                        console.log(`🔄 [${_ts()}] [${_iid}] 横幅模型不同，替换`);
+                        existing.remove();
+                    } else {
+                        // 无已有横幅，短时间防抖防止自动消失后多副本并发
+                        window._gpt_lastBannerTime = window._gpt_lastBannerTime || 0;
+                        const diff = Date.now() - window._gpt_lastBannerTime;
+                        if (diff < 3000) {
+                            console.log(`⏭️ [${_ts()}] [${_iid}] 3秒防抖 (diff=${diff}ms)`);
+                            return;
+                        }
+                    }
+                    window._gpt_lastBannerTime = Date.now();
+                    console.log(`🐛 [${_ts()}] [${_iid}] 弹横幅: ${modelName}`);
 
                     const banner = document.createElement('div');
                     banner.id = 'gpt-model-banner';
+                    banner.dataset.model = modelName;
 
                     if (isMini) {
+                        console.log(`🛑 [${_ts()}] [${_iid}] [横幅] 弹降智横幅 + 通知:`, modelName);
                         banner.style.cssText = `
                             position: fixed; top: 0; left: 0; right: 0; z-index: 999999;
                             opacity: 0.9;
@@ -162,28 +183,32 @@ function doInject(tabId) {
                             font-family: system-ui; box-shadow: 0 2px 12px rgba(220,38,38,0.3);
                             animation: slideDown 0.3s ease;
                         `;
-                        banner.innerHTML = `
-                            <span>⚠️ 模型已切换至 ${modelName} — 谨慎参考代码</span>
-                            <button id="gpt-banner-close" style="
-                                background: rgba(255,255,255,0.2);
-                                border: 1px solid rgba(255,255,255,0.3);
-                                color: white; padding: 1px 10px; border-radius: 6px; cursor: pointer;
-                                font-size: 13px; line-height: 1.4; vertical-align: middle;
-                            ">关闭</button>
-                        `;
+                        banner.textContent = `⚠️ 模型已切换至 ${modelName} — 谨慎参考代码`;
                         document.body.prepend(banner);
-
-                        document.getElementById('gpt-banner-close')?.addEventListener('click', function() {
-                            const b = document.getElementById('gpt-model-banner');
-                            if (b) b.remove();
-                        });
+                        console.log('🔴 [横幅] 降智横幅已插入 DOM');
 
                         try {
+                            console.log('🔔 [通知] 准备弹降智通知:', modelName);
                             new Notification('⚠️ 模型已降智', {
                                 body: `${modelName} — 谨慎参考代码`
                             });
-                        } catch (e) {}
+                            console.log('🔔 [通知] 降智通知已弹出');
+                        } catch (e) {
+                            console.warn('⚠️ [通知] 降智通知失败:', e);
+                        }
+
+                        setTimeout(() => {
+                            console.log('🔴 [横幅] 降智横幅开始淡出:', modelName);
+                            banner.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+                            banner.style.transform = 'translateY(-100%)';
+                            banner.style.opacity = '0';
+                            setTimeout(() => {
+                                banner.remove();
+                                console.log('🔴 [横幅] 降智横幅已移除');
+                            }, 300);
+                        }, 5000);
                     } else {
+                        console.log('🟢 [横幅] 弹恢复横幅 + 通知:', modelName);
                         banner.style.cssText = `
                             position: fixed; top: 0; left: 0; right: 0; z-index: 999999;
                             opacity: 0.9;
@@ -194,18 +219,27 @@ function doInject(tabId) {
                         `;
                         banner.textContent = `⭐ 模型已切换至 ${modelName} — 可以放心使用`;
                         document.body.prepend(banner);
+                        console.log('🟢 [横幅] 恢复横幅已插入 DOM');
 
                         try {
+                            console.log('🔔 [通知] 准备弹恢复通知:', modelName);
                             new Notification('🟢 模型已恢复', {
                                 body: `当前模型: ${modelName}`
                             });
-                        } catch (e) {}
+                            console.log('🔔 [通知] 恢复通知已弹出');
+                        } catch (e) {
+                            console.warn('⚠️ [通知] 恢复通知失败:', e);
+                        }
 
                         setTimeout(() => {
+                            console.log('🟢 [横幅] 恢复横幅开始淡出:', modelName);
                             banner.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
                             banner.style.transform = 'translateY(-100%)';
                             banner.style.opacity = '0';
-                            setTimeout(() => banner.remove(), 300);
+                            setTimeout(() => {
+                                banner.remove();
+                                console.log('🟢 [横幅] 恢复横幅已移除');
+                            }, 300);
                         }, 3000);
                     }
 
@@ -381,10 +415,10 @@ function renderCountBadge() {
     }
 
     let color, bg, border;
-    if (count >= 150) {
-        color = '#f38ba8'; bg = 'rgba(243,139,168,0.1)'; border = '1px solid rgba(243,139,168,0.3)';
-    } else if (count >= 100) {
-        color = '#f9e2af'; bg = 'rgba(249,226,175,0.1)'; border = '1px solid rgba(249,226,175,0.3)';
+                    if (count >= 160) {
+                        color = '#f38ba8'; bg = 'rgba(243,139,168,0.1)'; border = '1px solid rgba(243,139,168,0.3)';
+                    } else if (count >= 100) {
+                        color = '#f9e2af'; bg = 'rgba(249,226,175,0.1)'; border = '1px solid rgba(249,226,175,0.3)';
     } else {
         color = '#6c7086'; bg = 'transparent'; border = '1px solid rgba(108,112,134,0.25)';
     }
@@ -417,12 +451,12 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
     
     if (buttons.length === 0) {
         const nextRetry = (retryCount || 0) + 1;
-        if (nextRetry > 30) {
+        if (nextRetry > 15) {
             console.log('⏹️ "更多操作"按钮重试超时，停止');
             return;
         }
         console.log('⏳ 等待"更多操作"按钮...');
-        setTimeout(() => renderMoreButtonBadge(modelName, isMini, nextRetry), 500);
+        setTimeout(() => renderMoreButtonBadge(modelName, isMini, nextRetry), 2000);
         return;
     }
 
@@ -481,11 +515,11 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                             <div style="color:#89b4fa;font-size:15px;font-weight:600;margin:0 0 12px;">ℹ️ GPT-5.5 使用限制</div>
                             <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #313244;">
                                 <div style="color:#a6adc8;font-size:12px;">🆓 免费版</div>
-                                <div style="color:#cdd6f4;">5小时窗口内有限使用，动态调整</div>
+                                <div style="color:#cdd6f4;">约 <span style="color:#f9e2af;">10 条 / 5小时</span>，超标自动降 <span style="color:#f38ba8;">mini</span></div>
                             </div>
                             <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #313244;">
                                 <div style="color:#a6adc8;font-size:12px;">⭐ Plus / Go</div>
-                                <div style="color:#cdd6f4;">每 <span style="color:#f9e2af;">3小时 160 条</span>，超标自动 <span style="color:#f38ba8;">降级 mini</span></div>
+                                <div style="color:#cdd6f4;">每 <span style="color:#f9e2af;">3小时 160 条</span>，超标自动降 <span style="color:#f38ba8;">mini</span></div>
                             </div>
                             <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #313244;">
                                 <div style="color:#a6adc8;font-size:12px;">🧠 Thinking 模式</div>
@@ -516,7 +550,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                     const ts3h = messageTimestamps.filter(t => now - t < 3 * 60 * 60 * 1000);
                     const ts24h = messageTimestamps.filter(t => now - t < 24 * 60 * 60 * 1000);
 
-                    const count3hColor = ts3h.length >= 150 ? '#f38ba8' : ts3h.length >= 100 ? '#f9e2af' : '#a6e3a1';
+                    const count3hColor = ts3h.length >= 160 ? '#f38ba8' : ts3h.length >= 100 ? '#f9e2af' : '#a6e3a1';
 
                     // 状态
                     const isMiniStatus = currentModel ? currentModel.toLowerCase().includes('mini') : false;
@@ -573,7 +607,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                                     <span style="display:flex;align-items:center;gap:6px;">
                                         <span>
                                             <span style="font-weight:600;color:${count3hColor};">${ts3h.length}</span>
-                                            <span style="color:#6c7086;font-size:11px;"> / 150</span>
+                                            <span style="color:#6c7086;font-size:11px;"> / 160</span>
                                         </span>
                                         <span data-action="clear-msg" style="cursor:pointer;font-size:14px;color:#6c7086;user-select:none;line-height:1;" title="清零计数">🗑️</span>
                                     </span>
@@ -603,6 +637,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                     });
                     dropdown.querySelector('[data-action="clear-msg"]')?.addEventListener('click', async (e) => {
                         e.stopPropagation();
+                        if (!confirm('确定清零消息计数？')) return;
                         messageTimestamps = [];
                         await saveToStorage({ messageTimestamps: [] });
                         await updateDropdown(container);
@@ -616,7 +651,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                     dropdown.querySelector('[data-action="test-toggle"]')?.addEventListener('click', async (e) => {
                         e.stopPropagation();
                         testToggle = !testToggle;
-                        const model = testToggle ? 'gpt-5-3-mini' : 'gpt-5-5';
+                        const model = testToggle ? 'gpt-test-mini' : 'gpt-test';
                         await updateModel(model);
                     });
                 }
@@ -627,8 +662,10 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                 async function updateModel(modelName) {
                     const isMini = modelName.toLowerCase().includes('mini');
 
+                    console.log(`🐛 [${_ts()}] [${_iid}] [updateModel] modelName:${modelName} currentModel:${currentModel} isMini:${isMini}`);
+
                     if (modelName === currentModel) {
-                        console.log('ℹ️ 模型未变化:', modelName);
+                        console.log(`ℹ️ [${_ts()}] [${_iid}] 模型未变化:`, modelName);
                         // 重绘徽章，防止被 React 重新渲染清除
                         renderLogoBadge(modelName, isMini);
                         renderMoreButtonBadge(modelName, isMini);
@@ -636,7 +673,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                         return;
                     }
 
-                    console.log('🔄 模型变化:', currentModel, '→', modelName);
+                    console.log(`🔄 [${_ts()}] [${_iid}] 模型变化: ${currentModel} → ${modelName}`);
 
                     const now = new Date();
                     const timeStr = now.toLocaleString('zh-CN', {
@@ -657,7 +694,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                     // ✅ 写入 storage（同时同步 timestamps）
                     await saveToStorage({ currentModel: modelName, modelHistory: modelHistory });
                     renderCountBadge();
-                    console.log('✅ 模型已更新:', modelName);
+                    console.log(`✅ [${_ts()}] [${_iid}] 模型已更新:`, modelName);
                 }
 
                 // ====================================
@@ -669,7 +706,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                     const urlStr = typeof url === 'string' ? url : url?.url || '';
 
                     if (typeof urlStr === 'string' && urlStr.includes('/backend-api/f/conversation')) {
-                        console.log('🎯 fetch 拦截到 conversation');
+                        console.log(`🎯 [${_ts()}] [${_iid}] fetch 拦截到 conversation`);
 
                         return originalFetch.apply(this, args).then(async (response) => {
                             const cloned = response.clone();
@@ -681,7 +718,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                             function readStream() {
                                 reader.read().then(({ done, value }) => {
                                     if (done) {
-                                        console.log('📡 SSE 结束, resolvedModel:', resolvedModel);
+                                        console.log(`📡 [${_ts()}] [${_iid}] SSE 结束, resolvedModel:`, resolvedModel);
                                         if (resolvedModel) {
                                             setTimeout(() => updateModel(resolvedModel), 500);
                                         }
@@ -709,7 +746,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
 
                                                 if (model) {
                                                     resolvedModel = model;
-                                                    console.log('🎯 读到 resolved_model_slug:', model);
+                                                    console.log(`🎯 [${_ts()}] [${_iid}] 读到 resolved_model_slug:`, model);
                                                 }
                                             } catch (e) {}
                                         }
@@ -781,7 +818,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                 window.__modelMonitor = {
                     test: function() {
                         console.log('🧪 手动测试');
-                        updateModel('gpt-5.3-mini');
+                        updateModel('gpt-test-mini');
                     },
                     setModel: function(name) {
                         console.log('🧪 手动设置模型:', name);
@@ -834,6 +871,7 @@ function injectInterceptor(tabId) {
 
     chrome.scripting.executeScript({
         target: { tabId: tabId },
+        world: 'MAIN',
         func: function() {
             return typeof window.__modelMonitor !== 'undefined';
         }

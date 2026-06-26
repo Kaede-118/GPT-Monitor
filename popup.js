@@ -28,7 +28,7 @@ async function render() {
 
     const msg3h = document.getElementById('msg3h');
     msg3h.textContent = ts3h.length;
-    msg3h.className = 'msg-count' + (ts3h.length >= 150 ? ' danger' : ts3h.length >= 100 ? ' warn' : ' safe');
+    msg3h.className = 'msg-count' + (ts3h.length >= 160 ? ' danger' : ts3h.length >= 100 ? ' warn' : ' safe');
 
     document.getElementById('msg24h').textContent = ts24h.length;
 
@@ -81,11 +81,12 @@ document.getElementById('clearMsgBtn').addEventListener('click', () => {
 document.getElementById('testBtn').addEventListener('click', async () => {
     const data = await chrome.storage.local.get(['currentModel']);
     const cur = data.currentModel || '';
-    const next = cur.toLowerCase().includes('mini') ? 'gpt-5-5' : 'gpt-5-3-mini';
+    const next = cur.toLowerCase().includes('mini') ? 'gpt-test' : 'gpt-test-mini';
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tabs.length > 0) {
         chrome.scripting.executeScript({
             target: { tabId: tabs[0].id },
+            world: 'MAIN',
             func: (name) => window.__modelMonitor?.setModel(name),
             args: [next]
         });
