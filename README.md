@@ -10,7 +10,29 @@
 
 ## ❔ 为啥写这个
 
-作者是 ChatGPT 重度用户，每天少说也聊个两三百轮，老被路由到 `mini` 模型。切到 `mini` 后代码质量直线下降，一度改坏自己的qq空间爬虫脚本，要求给出完整代码时，GPT顺手重构脚本并且“不小心”删除了核心模块和一些逻辑，幸亏备份了。所以——**早知道，早预防**。
+作者是 ChatGPT 重度用户，每天少说也聊个两三百轮，经常被自动路由到 **mini** 模型。
+
+有一次维护自己的 QQ 空间爬虫，要求 AI 输出完整代码时，它非常热心地帮忙“重构”了整个脚本。
+
+然后……
+
+顺手把核心模块和几段重要逻辑一起重构没了。
+
+幸亏有备份。
+
+真正的问题其实不是代码写坏了，而是——
+
+**我当时根本不知道，回答我的已经不是我以为的那个模型了。**
+
+所以，与其事后发现，不如提前知道。
+
+于是有了 **GPT-Monitor**。
+
+它会实时监控 ChatGPT 后端实际路由到的模型（`resolved_model_slug`），当切换到 mini 模型时第一时间提醒你，让你在执行“生成完整代码”“大规模重构”“一次性修改整个项目”等高风险操作之前，多一个判断依据。
+
+毕竟……
+
+> **在让 AI 重构整个项目之前，最好先确认一下它今天的前额叶还在不在。**
 
 ---
 
@@ -230,7 +252,39 @@ MIT
 
 ## ❔ Why This Exists
 
-The author is a ChatGPT overdoser — hundreds of messages per day — and kept getting routed to `mini` models. Code quality tanks on `mini`; it once broke the author's QQ Space crawler script, and ChatGPT "accidentally" deleted core modules when asked for the full code. Thank goodness for backups. So — **forewarned is forearmed**.
+The author is a heavy ChatGPT user.
+
+Or, as friends would probably put it:
+
+**A ChatGPT overdoser.**,
+
+easily sending a few hundred messages every day, and kept getting silently routed to **mini** models.
+
+One day, while maintaining a Qzone crawler, the author asked ChatGPT to generate the full source code.
+
+It enthusiastically "refactored" the project.
+
+Then...
+
+It also refactored away several core modules and important pieces of logic.
+
+Fortunately, there was a backup.
+
+The real problem wasn't that the code was broken.
+
+The real problem was:
+
+**The author had no idea the conversation had already been routed to a different model.**
+
+Instead of finding out after something goes wrong, it's much better to know beforehand.
+
+That's why **GPT-Monitor** exists.
+
+GPT-Monitor monitors the actual model selected by the ChatGPT backend (`resolved_model_slug`) and alerts you whenever the conversation is routed to a mini model, so you have one more piece of information before asking AI to generate full source code, perform large-scale refactors, or modify an entire project.
+
+After all...
+
+> **Before asking AI to rewrite your entire project, make sure it still has its frontal lobe.**
 
 ---
 
@@ -436,3 +490,10 @@ chrome://extensions/ → Developer mode → Load unpacked
 ## 📄 License
 
 MIT
+
+
+⚠️ Before asking AI to rewrite your entire project,
+please make sure it still has its frontal lobe.
+
+在让 AI 重构整个项目之前，
+请先确认它今天的前额叶还在。
