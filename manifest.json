@@ -1,0 +1,41 @@
+{
+    "manifest_version": 3,
+    "name": "GPT-Monitor",
+    "version": "1.3",
+    "description": "实时监控 ChatGPT 当前使用的模型",
+    "permissions": [
+        "storage",
+        "notifications",
+        "webRequest",
+        "scripting"
+    ],
+    "host_permissions": [
+        "https://chatgpt.com/*",
+        "https://*.chatgpt.com/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {
+        "default_popup": "popup.html",
+        "default_title": "GPT-Monitor"
+    },
+    "content_scripts": [
+        {
+            "matches": ["https://chatgpt.com/*", "https://*.chatgpt.com/*"],
+            "js": ["content.js"],
+            "run_at": "document_start"
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [],
+            "matches": ["https://chatgpt.com/*"]
+        }
+    ],
+    "icons": {
+        "16": "icon16.png",
+        "48": "icon48.png",
+        "128": "icon128.png"
+    }
+}

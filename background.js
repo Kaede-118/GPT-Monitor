@@ -1,0 +1,948 @@
+// background.js
+console.log('🔍 Background service worker 已启动');
+
+let currentModel = null;
+let currentTabId = null;
+let detected = false;
+let injectedTabs = new Set();
+
+// ============================================
+// 消息计数（每 POST 一条 conversation 计 1 次）
+// ============================================
+function recordMessage() {
+    chrome.storage.local.get(['messageTimestamps'], (data) => {
+        let ts = data.messageTimestamps || [];
+        const now = Date.now();
+        ts = ts.filter(t => now - t < 24 * 60 * 60 * 1000);
+        ts.push(now);
+        chrome.storage.local.set({ messageTimestamps: ts }, () => {
+            // 推送给所有 content script
+            chrome.runtime.sendMessage({ type: 'MESSAGE_COUNT_UPDATED', timestamps: ts });
+        });
+    });
+}
+
+// ============================================
+// 历史记录管理（background 备用）
+// ============================================
+async function addHistory(modelName) {
+    console.log('📝 addHistory 被调用:', modelName);
+    const data = await chrome.storage.local.get(['modelHistory']);
+    let history = data.modelHistory || [];
+
+    if (history.length > 0 && history[0].model === modelName) {
+        console.log('⏭️ 模型与最新记录相同，跳过添加:', modelName);
+        return;
+    }
+
+    const now = new Date();
+    const timeStr = now.toLocaleString('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+
+    history.unshift({
+        model: modelName,
+        time: timeStr,
+        timestamp: now.getTime()
+    });
+
+    if (history.length > 50) {
+        history = history.slice(0, 50);
+        console.log('✂️ 历史记录超过50条，已裁剪');
+    }
+
+    await chrome.storage.local.set({ modelHistory: history });
+    await chrome.storage.local.set({ currentModel: modelName });
+    console.log('✅ 历史已保存, 当前模型:', modelName, '总记录数:', history.length);
+}
+
+// ============================================
+// 执行注入（带 storage 数据）
+// ============================================
+function doInject(tabId) {
+    if (injectedTabs.has(tabId)) {
+        console.log('⏭️ 已注入过，跳过');
+        return;
+    }
+    console.log('🔄 执行注入, tabId:', tabId);
+    injectedTabs.add(tabId);
+
+    // ✅ 读取 storage，直接传给页面主世界
+    chrome.storage.local.get(['currentModel', 'modelHistory', 'detected', 'messageTimestamps'], (storageData) => {
+        console.log('📦 注入时携带 storage:', storageData);
+
+        chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            world: 'MAIN',
+            func: function(storageData) {
+                console.log('💉 注入 SSE 拦截器, storage:', storageData);
+
+                // ====================================
+                // 页面主世界状态（从 storage 初始化）
+                // ====================================
+                let currentModel = storageData.currentModel || null;
+                let modelHistory = storageData.modelHistory || [];
+                let detected = storageData.detected || false;
+                let messageTimestamps = storageData.messageTimestamps || [];
+                let testToggle = false; // false → 下次测试切 mini
+                let bannerEl = null;
+                let logoBadgeEl = null;
+                let dropdownEl = null;
+
+                console.log('📊 初始化状态:', { currentModel, historyCount: modelHistory.length, detected });
+
+                // 监听后台推送的消息计数更新
+                window.addEventListener('message', function(event) {
+                    if (event.source !== window) return;
+                    if (event.data && event.data.type === 'TIMESTAMPS_UPDATED' && event.data.target === 'storage') {
+                        messageTimestamps = event.data.timestamps;
+                        renderCountBadge();
+                        console.log('📊 消息计数已更新:', messageTimestamps.length);
+                    }
+                });
+
+                // ====================================
+                // 写入 storage（直接到 content.js）
+                // ====================================
+                function sendToStorage(data) {
+                    return new Promise((resolve) => {
+                        const id = Date.now() + Math.random();
+                        const handler = (event) => {
+                            if (event.source !== window) return;
+                            if (event.data && event.data.id === id) {
+                                window.removeEventListener('message', handler);
+                                resolve(event.data.response);
+                            }
+                        };
+                        window.addEventListener('message', handler);
+                        window.postMessage({
+                            type: 'SET_STORAGE',
+                            data: data,
+                            id: id,
+                            target: 'storage'
+                        }, '*');
+                    });
+                }
+
+                // ====================================
+                // 保存到 storage（只用于持久化）
+                // ====================================
+                async function saveToStorage(data) {
+                    try {
+                        const result = await sendToStorage(data);
+                        if (result && result.timestamps) {
+                            messageTimestamps = result.timestamps;
+                        }
+                        console.log('💾 storage 已保存:', Object.keys(data));
+                    } catch (e) {
+                        console.warn('⚠️ storage 保存失败:', e);
+                    }
+                }
+
+                // ====================================
+                // 显示横幅
+                // ====================================
+                function showBanner(modelName, isMini) {
+                    const oldBanner = document.getElementById('gpt-model-banner');
+                    if (oldBanner) oldBanner.remove();
+
+                    const banner = document.createElement('div');
+                    banner.id = 'gpt-model-banner';
+
+                    if (isMini) {
+                        banner.style.cssText = `
+                            position: fixed; top: 0; left: 0; right: 0; z-index: 999999;
+                            opacity: 0.9;
+                            background: #dc2626; color: white; padding: 10px 20px;
+                            text-align: center; font-weight: 500; font-size: 14px;
+                            font-family: system-ui; box-shadow: 0 2px 12px rgba(220,38,38,0.3);
+                            animation: slideDown 0.3s ease;
+                        `;
+                        banner.innerHTML = `
+                            <span>⚠️ 模型已切换至 ${modelName} — 谨慎参考代码</span>
+                            <button id="gpt-banner-close" style="
+                                background: rgba(255,255,255,0.2);
+                                border: 1px solid rgba(255,255,255,0.3);
+                                color: white; padding: 1px 10px; border-radius: 6px; cursor: pointer;
+                                font-size: 13px; line-height: 1.4; vertical-align: middle;
+                            ">关闭</button>
+                        `;
+                        document.body.prepend(banner);
+
+                        document.getElementById('gpt-banner-close')?.addEventListener('click', function() {
+                            const b = document.getElementById('gpt-model-banner');
+                            if (b) b.remove();
+                        });
+
+                        try {
+                            new Notification('⚠️ 模型已降智', {
+                                body: `${modelName} — 谨慎参考代码`
+                            });
+                        } catch (e) {}
+                    } else {
+                        banner.style.cssText = `
+                            position: fixed; top: 0; left: 0; right: 0; z-index: 999999;
+                            opacity: 0.9;
+                            background: #22c55e; color: white; padding: 10px 20px;
+                            text-align: center; font-weight: 500; font-size: 14px;
+                            font-family: system-ui; box-shadow: 0 2px 12px rgba(34,197,94,0.3);
+                            animation: slideDown 0.3s ease;
+                        `;
+                        banner.textContent = `⭐ 模型已切换至 ${modelName} — 可以放心使用`;
+                        document.body.prepend(banner);
+
+                        try {
+                            new Notification('🟢 模型已恢复', {
+                                body: `当前模型: ${modelName}`
+                            });
+                        } catch (e) {}
+
+                        setTimeout(() => {
+                            banner.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+                            banner.style.transform = 'translateY(-100%)';
+                            banner.style.opacity = '0';
+                            setTimeout(() => banner.remove(), 300);
+                        }, 3000);
+                    }
+
+                    if (!document.getElementById('gpt-banner-style')) {
+                        const style = document.createElement('style');
+                        style.id = 'gpt-banner-style';
+                        style.textContent = `
+                            @keyframes slideDown {
+                                from { transform: translateY(-100%); opacity: 0; }
+                                to { transform: translateY(0); opacity: 1; }
+                            }
+                        `;
+                        document.head.appendChild(style);
+                    }
+                }
+
+// ====================================
+// 渲染 Logo 旁边的模型徽章（放在 Logo 按钮右边）
+// ====================================
+function renderLogoBadge(modelName, isMini) {
+    console.log('🔄 renderLogoBadge:', modelName, isMini);
+
+    // ✅ 找模型选择器按钮（ChatGPT logo）
+    const logoBtn = document.querySelector('button[aria-label="模型选择器"]');
+    if (!logoBtn) {
+        console.log('⏳ 等待模型选择器按钮...');
+        setTimeout(() => renderLogoBadge(modelName, isMini), 500);
+        return;
+    }
+    console.log('✅ 找到模型选择器按钮');
+
+    // 检查是否已存在
+    let container = document.getElementById('gpt-badge-container');
+    if (container) {
+        // 更新已有徽章
+        const badge = container.querySelector('#gpt-logo-badge');
+        if (badge) {
+            badge.textContent = modelName;
+            badge.style.background = isMini ? '#dc2626' : 'rgba(34, 197, 94, 0.15)';
+            badge.style.color = isMini ? '#ffffff' : '#22c55e';
+            badge.style.border = isMini ? '1px solid #dc2626' : '1px solid rgba(34, 197, 94, 0.3)';
+        }
+        updateDropdown(container);
+        return;
+    }
+
+    console.log('🏗️ 创建徽章');
+    container = document.createElement('div');
+    container.id = 'gpt-badge-container';
+    container.style.cssText = `
+        display: inline-block;
+        position: relative;
+        margin-left: 8px;
+        vertical-align: middle;
+        cursor: pointer;
+        pointer-events: auto;
+        z-index: 10;
+    `;
+
+    const badge = document.createElement('span');
+    badge.id = 'gpt-logo-badge';
+    badge.style.cssText = `
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        font-family: system-ui, sans-serif;
+        background: ${isMini ? '#dc2626' : 'rgba(34, 197, 94, 0.15)'};
+        color: ${isMini ? '#ffffff' : '#22c55e'};
+        border: 1px solid ${isMini ? '#dc2626' : 'rgba(34, 197, 94, 0.3)'};
+        transition: all 0.3s ease;
+        user-select: none;
+        line-height: 1.6;
+        cursor: pointer;
+        pointer-events: auto;
+        white-space: nowrap;
+    `;
+    badge.textContent = modelName;
+
+    if (isMini) {
+        badge.style.animation = 'gpt-badge-pulse 1.5s ease-in-out infinite';
+        if (!document.getElementById('gpt-badge-style')) {
+            const style = document.createElement('style');
+            style.id = 'gpt-badge-style';
+            style.textContent = `
+                @keyframes gpt-badge-pulse {
+                    0%, 100% { opacity: 1; transform: scale(1); }
+                    50% { opacity: 0.7; transform: scale(1.05); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+
+    const arrow = document.createElement('span');
+    arrow.textContent = ' ▾';
+    arrow.style.cssText = `font-size: 10px; opacity: 0.6; pointer-events: none;`;
+    badge.appendChild(arrow);
+
+    const dropdown = document.createElement('div');
+    dropdown.id = 'gpt-history-dropdown';
+    dropdown.style.cssText = `
+        display: none;
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        width: 340px;
+        background: #1e1e2f;
+        border: 1px solid #313244;
+        border-radius: 12px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+        z-index: 99999;
+        font-family: -apple-system, system-ui, sans-serif;
+        font-size: 13px;
+        pointer-events: auto;
+    `;
+
+    if (!document.getElementById('gpt-dropdown-style')) {
+        const style = document.createElement('style');
+        style.id = 'gpt-dropdown-style';
+        style.textContent = `
+            #gpt-history-dropdown::-webkit-scrollbar { width: 4px; }
+            #gpt-history-dropdown::-webkit-scrollbar-track { background: #313244; border-radius: 4px; }
+            #gpt-history-dropdown::-webkit-scrollbar-thumb { background: #6c7086; border-radius: 4px; }
+        `;
+        document.head.appendChild(style);
+    }
+
+    container.appendChild(badge);
+    container.appendChild(dropdown);
+
+    // ✅ 放到 Logo 按钮右边（作为同级元素）
+    logoBtn.parentElement.insertBefore(container, logoBtn.nextSibling);
+    // 同时创建计数徽章
+    renderCountBadge();
+    console.log('✅ 徽章已添加到 Logo 按钮右侧');
+
+    // 点击徽章切换下拉菜单
+    badge.addEventListener('click', async function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        const isOpen = dropdown.style.display === 'block';
+        dropdown.style.display = isOpen ? 'none' : 'block';
+        if (!isOpen) await updateDropdown(container);
+    });
+
+    // 点击其他地方关闭下拉菜单
+    document.addEventListener('click', function(e) {
+        if (container && e.target.isConnected && !container.contains(e.target)) {
+            if (dropdown.style.display === 'block') dropdown.style.display = 'none';
+        }
+    });
+
+    updateDropdown(container);
+    console.log('✅ Logo 徽章已创建:', modelName);
+}
+// ====================================
+// 渲染消息计数徽章（灰色标签，模型徽章右侧）
+// ====================================
+function renderCountBadge() {
+    const now = Date.now();
+    const ts3h = messageTimestamps.filter(t => now - t < 3 * 60 * 60 * 1000);
+    const count = ts3h.length;
+
+    let el = document.getElementById('gpt-count-badge');
+    if (!el) {
+        el = document.createElement('span');
+        el.id = 'gpt-count-badge';
+        const container = document.getElementById('gpt-badge-container');
+        if (!container) return;
+        container.parentElement.insertBefore(el, container.nextSibling);
+    }
+
+    let color, bg, border;
+    if (count >= 150) {
+        color = '#f38ba8'; bg = 'rgba(243,139,168,0.1)'; border = '1px solid rgba(243,139,168,0.3)';
+    } else if (count >= 100) {
+        color = '#f9e2af'; bg = 'rgba(249,226,175,0.1)'; border = '1px solid rgba(249,226,175,0.3)';
+    } else {
+        color = '#6c7086'; bg = 'transparent'; border = '1px solid rgba(108,112,134,0.25)';
+    }
+
+    el.style.cssText = `
+        display: inline-block;
+        margin-left: 6px;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 500;
+        font-family: system-ui, sans-serif;
+        color: ${color};
+        background: ${bg};
+        border: ${border};
+        user-select: none;
+        line-height: 1.6;
+        white-space: nowrap;
+        vertical-align: middle;
+        pointer-events: auto;
+    `;
+    el.textContent = `⏳ ${count} / 160`;
+}
+// ====================================
+// 渲染"更多操作"旁边的徽章（每条消息）
+// ====================================
+function renderMoreButtonBadge(modelName, isMini, retryCount) {
+    console.log('🔄 renderMoreButtonBadge:', modelName, isMini, 'retry:', retryCount);
+    const buttons = document.querySelectorAll('button[aria-label="更多操作"]');
+    
+    if (buttons.length === 0) {
+        const nextRetry = (retryCount || 0) + 1;
+        if (nextRetry > 30) {
+            console.log('⏹️ "更多操作"按钮重试超时，停止');
+            return;
+        }
+        console.log('⏳ 等待"更多操作"按钮...');
+        setTimeout(() => renderMoreButtonBadge(modelName, isMini, nextRetry), 500);
+        return;
+    }
+
+    const moreBtn = buttons[buttons.length - 1];
+    console.log('✅ 找到最新"更多操作"按钮');
+
+    // 检查是否已有徽章
+    let existingDisplay = moreBtn.parentElement.querySelector('#gpt-display-el');
+    if (existingDisplay) {
+        existingDisplay.textContent = modelName;
+        existingDisplay.style.background = isMini ? '#dc2626' : '#22c55e';
+        if (isMini) {
+            existingDisplay.style.animation = 'gpt-warning-pulse 1.5s ease-in-out infinite';
+        } else {
+            existingDisplay.style.animation = 'none';
+        }
+        console.log('✅ "更多操作"徽章已更新');
+        return;
+    }
+
+    // 创建新徽章
+    const displayEl = document.createElement('div');
+    displayEl.id = 'gpt-display-el';
+    displayEl.style.cssText = `
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 12px;
+        margin-left: 8px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: system-ui, sans-serif;
+        transition: all 0.3s ease;
+        user-select: none;
+        background: ${isMini ? '#dc2626' : '#22c55e'};
+        color: white;
+    `;
+    displayEl.textContent = modelName;
+
+    if (isMini) {
+        displayEl.style.animation = 'gpt-warning-pulse 1.5s ease-in-out infinite';
+    }
+
+    moreBtn.parentElement.insertBefore(displayEl, moreBtn.nextSibling);
+    console.log('✅ "更多操作"徽章已创建:', modelName);
+}
+                // ====================================
+                // 更新下拉历史列表
+                // 和 popup 同步所有样式和功能
+                // ====================================
+                function showUsageInfoInDropdown() {
+                    const d = document.getElementById('gpt-history-dropdown');
+                    if (!d) return;
+                    d.innerHTML = `
+                        <div style="padding:12px 16px;font-size:13px;line-height:1.6;">
+                            <div style="color:#89b4fa;font-size:15px;font-weight:600;margin:0 0 12px;">ℹ️ GPT-5.5 使用限制</div>
+                            <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #313244;">
+                                <div style="color:#a6adc8;font-size:12px;">🆓 免费版</div>
+                                <div style="color:#cdd6f4;">5小时窗口内有限使用，动态调整</div>
+                            </div>
+                            <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #313244;">
+                                <div style="color:#a6adc8;font-size:12px;">⭐ Plus / Go</div>
+                                <div style="color:#cdd6f4;">每 <span style="color:#f9e2af;">3小时 160 条</span>，超标自动 <span style="color:#f38ba8;">降级 mini</span></div>
+                            </div>
+                            <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #313244;">
+                                <div style="color:#a6adc8;font-size:12px;">🧠 Thinking 模式</div>
+                                <div style="color:#cdd6f4;">Plus 手动选；Go 每 5h 10 条</div>
+                            </div>
+                            <div style="margin-bottom:0;">
+                                <div style="color:#f38ba8;font-weight:500;">⚠️ 作者实测</div>
+                                <div style="color:#cdd6f4;">不稳定的网络环境（VPN/节点）和要求 GPT 进行大量编码会大量消耗额度，导致降智</div>
+                            </div>
+                            <div style="text-align:center;padding-top:8px;border-top:1px solid #313244;margin-top:10px;">
+                                <span data-action="back-to-dropdown" style="cursor:pointer;color:#89b4fa;font-size:12px;">← 返回</span>
+                            </div>
+                        </div>
+                    `;
+                    d.querySelector('[data-action="back-to-dropdown"]')?.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const c = document.getElementById('gpt-badge-container');
+                        if (c) updateDropdown(c);
+                    });
+                }
+
+                async function updateDropdown(container) {
+                    const dropdown = container?.querySelector('#gpt-history-dropdown') || document.getElementById('gpt-history-dropdown');
+                    if (!dropdown) return;
+
+                    // 使用本地缓存的 timestamps
+                    const now = Date.now();
+                    const ts3h = messageTimestamps.filter(t => now - t < 3 * 60 * 60 * 1000);
+                    const ts24h = messageTimestamps.filter(t => now - t < 24 * 60 * 60 * 1000);
+
+                    const count3hColor = ts3h.length >= 150 ? '#f38ba8' : ts3h.length >= 100 ? '#f9e2af' : '#a6e3a1';
+
+                    // 状态
+                    const isMiniStatus = currentModel ? currentModel.toLowerCase().includes('mini') : false;
+                    const statusDotColor = isMiniStatus ? '#f38ba8' : currentModel ? '#a6e3a1' : '#6c7086';
+                    const statusText = isMiniStatus ? '⚠️ 已降智' : currentModel ? '✅ 正常' : '未检测';
+                    const switchCount = modelHistory && modelHistory.length > 0 ? modelHistory.length - 1 : 0;
+                    const switchText = modelHistory && modelHistory.length > 0 ? `切换 ${switchCount} 次` : '';
+
+                    // 模型徽章样式
+                    const badgeBg = isMiniStatus ? '#f38ba8' : currentModel ? '#a6e3a1' : '#313244';
+                    const badgeColor = isMiniStatus || currentModel ? '#1e1e2f' : '#a6adc8';
+                    const badgeText = currentModel || '未检测';
+
+                    // 历史记录列表
+                    let historyHtml = '';
+                    if (!modelHistory || modelHistory.length === 0) {
+                        historyHtml = `<div style="padding:12px 16px;color:#6c7086;text-align:center;font-size:13px;">暂无模型切换记录</div>`;
+                    } else {
+                        historyHtml = modelHistory.map((item, index) => {
+                            const isMini = item.model.toLowerCase().includes('mini');
+                            const isCurrent = item.model === currentModel && index === 0;
+                            return `
+                                <div style="
+                                    display: flex; justify-content: space-between; align-items: center;
+                                    padding: 5px 0; border-bottom: 1px solid #313244; font-size: 13px;
+                                    ${isCurrent ? 'background: rgba(137,180,250,0.08);' : ''}
+                                ">
+                                    <span style="color:${isMini ? '#f38ba8' : '#a6e3a1'}; font-weight:${isCurrent ? '600' : '500'};">
+                                        ${isMini ? '🔴' : '🟢'} ${item.model} ${isCurrent ? '← 当前' : ''}
+                                    </span>
+                                    <span style="color:#6c7086;font-size:11px;">${item.time}</span>
+                                </div>
+                            `;
+                        }).join('');
+                    }
+
+                    dropdown.innerHTML = `
+                        <div style="padding:12px 16px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;border-bottom:1px solid #313244;padding-bottom:10px;">
+                                <span style="font-size:15px;color:#89b4fa;font-weight:bold;">📊 模型监控</span>
+                                <span style="display:flex;align-items:center;gap:8px;">
+                                    <span style="font-size:12px;font-weight:600;padding:2px 12px;border-radius:20px;background:${badgeBg};color:${badgeColor};">${badgeText}</span>
+                                    <span data-action="usage-info" style="cursor:pointer;font-size:16px;color:#6c7086;user-select:none;line-height:1;">ⓘ</span>
+                                </span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:#a6adc8;margin-bottom:8px;">
+                                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusDotColor};"></span>
+                                <span>${statusText}</span>
+                                <span style="color:#6c7086;font-size:11px;margin-left:auto;">${switchText}</span>
+                            </div>
+                            <div style="margin:6px 0;padding:6px 0;border-top:1px solid #313244;font-size:13px;">
+                                <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;">
+                                    <span>⏳ 近3h</span>
+                                    <span style="display:flex;align-items:center;gap:6px;">
+                                        <span>
+                                            <span style="font-weight:600;color:${count3hColor};">${ts3h.length}</span>
+                                            <span style="color:#6c7086;font-size:11px;"> / 150</span>
+                                        </span>
+                                        <span data-action="clear-msg" style="cursor:pointer;font-size:14px;color:#6c7086;user-select:none;line-height:1;" title="清零计数">🗑️</span>
+                                    </span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;">
+                                    <span>📅 近24h</span>
+                                    <span>
+                                        <span style="font-weight:600;color:#cdd6f4;">${ts24h.length}</span>
+                                        <span style="color:#6c7086;font-size:11px;"> (参考)</span>
+                                    </span>
+                                </div>
+                            </div>
+                            <div style="max-height:260px;overflow-y:auto;">
+                                ${historyHtml}
+                            </div>
+                            <div style="display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid #313244;">
+                                <button data-action="test-toggle" style="flex:1;padding:6px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;background:#89b4fa;color:#1e1e2f;">🔬 测试</button>
+                                <button data-action="clear-history" style="flex:1;padding:6px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;background:#313244;color:#cdd6f4;">🗑️ 清除历史</button>
+                            </div>
+                        </div>
+                    `;
+
+                    // 用 addEventListener 绑定动作
+                    dropdown.querySelector('[data-action="usage-info"]')?.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        showUsageInfoInDropdown();
+                    });
+                    dropdown.querySelector('[data-action="clear-msg"]')?.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        messageTimestamps = [];
+                        await saveToStorage({ messageTimestamps: [] });
+                        await updateDropdown(container);
+                    });
+                    dropdown.querySelector('[data-action="clear-history"]')?.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        modelHistory = [];
+                        await saveToStorage({ modelHistory: [] });
+                        await updateDropdown(container);
+                    });
+                    dropdown.querySelector('[data-action="test-toggle"]')?.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        testToggle = !testToggle;
+                        const model = testToggle ? 'gpt-5-3-mini' : 'gpt-5-5';
+                        await updateModel(model);
+                    });
+                }
+
+                // ====================================
+                // 更新模型（内存 + storage + UI）
+                // ====================================
+                async function updateModel(modelName) {
+                    const isMini = modelName.toLowerCase().includes('mini');
+
+                    if (modelName === currentModel) {
+                        console.log('ℹ️ 模型未变化:', modelName);
+                        // 重绘徽章，防止被 React 重新渲染清除
+                        renderLogoBadge(modelName, isMini);
+                        renderMoreButtonBadge(modelName, isMini);
+                        renderCountBadge();
+                        return;
+                    }
+
+                    console.log('🔄 模型变化:', currentModel, '→', modelName);
+
+                    const now = new Date();
+                    const timeStr = now.toLocaleString('zh-CN', {
+                        month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
+                    });
+
+                    // ✅ 更新内存
+                    currentModel = modelName;
+                    modelHistory.unshift({ model: modelName, time: timeStr, timestamp: now.getTime() });
+                    if (modelHistory.length > 50) modelHistory = modelHistory.slice(0, 50);
+
+                    // ✅ 更新 UI
+                    renderLogoBadge(modelName, isMini);
+                    renderMoreButtonBadge(modelName, isMini);
+                    // ✅ 每次切换都显示横幅
+                    showBanner(modelName, isMini);
+
+                    // ✅ 写入 storage（同时同步 timestamps）
+                    await saveToStorage({ currentModel: modelName, modelHistory: modelHistory });
+                    renderCountBadge();
+                    console.log('✅ 模型已更新:', modelName);
+                }
+
+                // ====================================
+                // 拦截 fetch
+                // ====================================
+                const originalFetch = window.fetch;
+                window.fetch = function(...args) {
+                    const url = args[0];
+                    const urlStr = typeof url === 'string' ? url : url?.url || '';
+
+                    if (typeof urlStr === 'string' && urlStr.includes('/backend-api/f/conversation')) {
+                        console.log('🎯 fetch 拦截到 conversation');
+
+                        return originalFetch.apply(this, args).then(async (response) => {
+                            const cloned = response.clone();
+                            const reader = cloned.body.getReader();
+                            const decoder = new TextDecoder('utf-8');
+                            let buffer = '';
+                            let resolvedModel = null;
+
+                            function readStream() {
+                                reader.read().then(({ done, value }) => {
+                                    if (done) {
+                                        console.log('📡 SSE 结束, resolvedModel:', resolvedModel);
+                                        if (resolvedModel) {
+                                            setTimeout(() => updateModel(resolvedModel), 500);
+                                        }
+                                        return;
+                                    }
+
+                                    const chunk = decoder.decode(value, { stream: true });
+                                    buffer += chunk;
+                                    const lines = buffer.split('\n');
+                                    buffer = lines.pop() || '';
+
+                                    for (const line of lines) {
+                                        if (line.startsWith('data: ')) {
+                                            try {
+                                                const jsonStr = line.slice(6);
+                                                if (jsonStr === '[DONE]') continue;
+                                                const data = JSON.parse(jsonStr);
+
+                                                let model = null;
+                                                if (data.metadata && data.metadata.resolved_model_slug) {
+                                                    model = data.metadata.resolved_model_slug;
+                                                } else if (data.v && data.v.message && data.v.message.metadata) {
+                                                    model = data.v.message.metadata.resolved_model_slug;
+                                                }
+
+                                                if (model) {
+                                                    resolvedModel = model;
+                                                    console.log('🎯 读到 resolved_model_slug:', model);
+                                                }
+                                            } catch (e) {}
+                                        }
+                                    }
+                                    readStream();
+                                });
+                            }
+                            readStream();
+                            return response;
+                        });
+                    }
+                    return originalFetch.apply(this, args);
+                };
+
+                // ====================================
+                // 启动提示
+                // ====================================
+                function showStartupTip() {
+                    const existing = document.getElementById('gpt-startup-tip');
+                    if (existing) existing.remove();
+
+                    const tip = document.createElement('div');
+                    tip.id = 'gpt-startup-tip';
+                    tip.style.cssText = `
+                        position: fixed; top: 0; left: 0; right: 0; z-index: 999990;
+                        background: rgba(34,197,94,0.12);
+                        backdrop-filter: blur(8px);
+                        color: #22c55e;
+                        padding: 8px 20px;
+                        text-align: center;
+                        font-size: 14px;
+                        font-weight: 500;
+                        font-family: system-ui, sans-serif;
+                        border-bottom: 1px solid rgba(34,197,94,0.15);
+                        transition: opacity 0.6s ease, transform 0.6s ease;
+                        opacity: 1;
+                        transform: translateY(0);
+                        pointer-events: none;
+                        user-select: none;
+                        letter-spacing: 0.3px;
+                    `;
+                    tip.innerHTML = `
+                        <span style="display:inline-flex;align-items:center;gap:8px;">
+                            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;animation:gpt-dot-pulse 1.2s ease-in-out infinite;"></span>
+                            🔍 模型监控已启动
+                        </span>
+                    `;
+                    document.body.prepend(tip);
+
+                    if (!document.getElementById('gpt-tip-style')) {
+                        const style = document.createElement('style');
+                        style.id = 'gpt-tip-style';
+                        style.textContent = `
+                            @keyframes gpt-dot-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.3;transform:scale(0.7)} }
+                        `;
+                        document.head.appendChild(style);
+                    }
+
+                    setTimeout(() => {
+                        tip.style.opacity = '0';
+                        tip.style.transform = 'translateY(-20px)';
+                        setTimeout(() => { if (tip.parentNode) tip.remove(); }, 600);
+                    }, 1000);
+                }
+
+                // ====================================
+                // 暴露调试接口
+                // ====================================
+                window.__modelMonitor = {
+                    test: function() {
+                        console.log('🧪 手动测试');
+                        updateModel('gpt-5.3-mini');
+                    },
+                    setModel: function(name) {
+                        console.log('🧪 手动设置模型:', name);
+                        updateModel(name);
+                    },
+                    reset: function() {
+                        detected = false;
+                        document.getElementById('gpt-model-banner')?.remove();
+                        saveToStorage({ detected: false });
+                        console.log('🔄 已重置');
+                    },
+                    status: function() {
+                        console.log({ currentModel, historyCount: modelHistory.length, detected });
+                    },
+                    __refreshDropdown: async function() {
+                        const c = document.getElementById('gpt-badge-container');
+                        if (c) await updateDropdown(c);
+                    }
+                };
+
+                // ====================================
+                // 启动
+                // ====================================
+                showStartupTip();
+
+                if (currentModel) {
+                    const isMini = currentModel.toLowerCase().includes('mini');
+                    renderLogoBadge(currentModel, isMini);
+                    renderMoreButtonBadge(currentModel, isMini);
+                }
+
+                // 尝试创建计数徽章（即使没有模型数据也显示）
+                setTimeout(renderCountBadge, 500);
+
+                console.log('✅ SSE 拦截器已安装');
+                console.log('💡 调试: window.__modelMonitor.test()');
+                console.log('💡 调试: window.__modelMonitor.reset()');
+                console.log('💡 调试: window.__modelMonitor.status()');
+            },
+            args: [storageData]
+        });
+    }).catch(err => console.error('❌ 注入失败:', err));
+}
+
+// ============================================
+// 注入拦截器（检查页面主世界）
+// ============================================
+function injectInterceptor(tabId) {
+    console.log('💉 injectInterceptor 被调用, tabId:', tabId);
+
+    chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: function() {
+            return typeof window.__modelMonitor !== 'undefined';
+        }
+    }).then((results) => {
+        const alreadyInjected = results && results[0] && results[0].result;
+        if (alreadyInjected) {
+            console.log('⏭️ 页面主世界已有 __modelMonitor，跳过注入');
+            return;
+        }
+        console.log('🔄 页面主世界无 __modelMonitor，执行注入');
+        doInject(tabId);
+    }).catch((err) => {
+        console.log('🔄 检查失败，执行注入, err:', err);
+        doInject(tabId);
+    });
+}
+
+// ============================================
+// 消息处理（background 备用）
+// ============================================
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log('📨 Background 收到消息:', message.type);
+
+    if (message.type === 'PING') {
+        sendResponse({ pong: true });
+        return true;
+    }
+
+    if (message.type === 'GET_STATUS') {
+        sendResponse({ detected: detected });
+        return true;
+    }
+
+    if (message.type === 'ADD_HISTORY') {
+        const model = message.data?.model || message.model;
+        if (model) {
+            addHistory(model);
+            sendResponse({ done: true });
+        } else {
+            sendResponse({ done: false });
+        }
+        return true;
+    }
+
+    if (message.type === 'RESET_DETECTED') {
+        detected = false;
+        chrome.storage.local.set({ detected: false });
+        sendResponse({ done: true });
+        return true;
+    }
+
+    if (message.type === 'CLEAR_MESSAGE_TIMESTAMPS') {
+        chrome.storage.local.set({ messageTimestamps: [] });
+        sendResponse({ done: true });
+        return true;
+    }
+});
+
+// ============================================
+// webRequest 拦截
+// ============================================
+chrome.webRequest.onBeforeRequest.addListener(
+    function(details) {
+        if (details.url.includes('/backend-api/f/conversation')) {
+            console.log('🎯 [webRequest] 拦截到 conversation, tabId:', details.tabId);
+            recordMessage();
+            if (details.tabId > 0) {
+                currentTabId = details.tabId;
+                injectInterceptor(currentTabId);
+            }
+        }
+        return { cancel: false };
+    },
+    { urls: ["https://chatgpt.com/backend-api/f/conversation"] },
+    ["requestBody"]
+);
+
+// ============================================
+// 加载存储状态
+// ============================================
+async function loadDetected() {
+    const result = await chrome.storage.local.get(['detected']);
+    detected = result.detected || false;
+    console.log('📦 加载检测状态:', detected);
+}
+loadDetected();
+
+// ============================================
+// Tab 管理
+// ============================================
+chrome.tabs.onActivated.addListener((activeInfo) => {
+    currentTabId = activeInfo.tabId;
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.status === 'loading' && tab.url?.includes('chatgpt.com')) {
+        console.log('🔄 页面加载中，清除标记, tabId:', tabId);
+        injectedTabs.delete(tabId);
+    }
+
+    if (changeInfo.status === 'complete' && tab.url?.includes('chatgpt.com')) {
+        console.log('🔄 Tab 更新完成:', tabId);
+        currentTabId = tabId;
+        setTimeout(() => injectInterceptor(tabId), 1500);
+    }
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+    injectedTabs.delete(tabId);
+});
+
+console.log('✅ background 已就绪');

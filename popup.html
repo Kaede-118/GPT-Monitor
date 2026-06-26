@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>GPT-Monitor</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            width: 340px;
+            padding: 12px 16px;
+            font-family: -apple-system, system-ui, sans-serif;
+            margin: 0;
+            background: #1e1e2f;
+            color: #cdd6f4;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #313244;
+            padding-bottom: 10px;
+        }
+        .header h3 { margin: 0; font-size: 15px; color: #89b4fa; }
+        .model-badge {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 2px 12px;
+            border-radius: 20px;
+            background: #313244;
+            color: #a6adc8;
+        }
+        .model-badge.mini { background: #f38ba8; color: #1e1e2f; }
+        .model-badge.normal { background: #a6e3a1; color: #1e1e2f; }
+        .history { max-height: 260px; overflow-y: auto; }
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #313244;
+            font-size: 13px;
+        }
+        .history-item .time { color: #6c7086; font-size: 11px; }
+        .history-item .model { font-weight: 500; }
+        .history-item .model.mini { color: #f38ba8; }
+        .history-item .model.normal { color: #a6e3a1; }
+        .empty { color: #6c7086; text-align: center; padding: 20px 0; font-size: 13px; }
+        .status-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: #a6adc8;
+            margin-bottom: 8px;
+        }
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+        .status-dot.mini { background: #f38ba8; }
+        .status-dot.normal { background: #a6e3a1; }
+        .status-dot.unknown { background: #6c7086; }
+        .actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #313244;
+        }
+        .actions button {
+            flex: 1;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            background: #313244;
+            color: #cdd6f4;
+            transition: background 0.2s;
+        }
+        .actions button:hover { background: #45475a; }
+        .actions button.danger { background: #f38ba8; color: #1e1e2f; }
+        .actions button.danger:hover { background: #eba0ac; }
+        .count { color: #6c7086; font-size: 11px; }
+        .msg-stats {
+            margin: 6px 0;
+            padding: 6px 0;
+            border-top: 1px solid #313244;
+            font-size: 13px;
+        }
+        .msg-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 3px 0;
+        }
+        .msg-limit { color: #6c7086; font-size: 11px; }
+        .msg-count { font-weight: 600; }
+        .msg-count.safe { color: #a6e3a1; }
+        .msg-count.warn { color: #f9e2af; }
+        .msg-count.danger { color: #f38ba8; }
+        .info-btn {
+            cursor: pointer;
+            font-size: 16px;
+            color: #6c7086;
+            transition: color 0.2s;
+            line-height: 1;
+            user-select: none;
+        }
+        .info-btn:hover { color: #89b4fa; }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 999999;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal-box {
+            background: #1e1e2f;
+            border: 1px solid #313244;
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 320px;
+            width: 100%;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+            font-size: 13px;
+            line-height: 1.6;
+            color: #cdd6f4;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+        }
+        .modal-box h4 {
+            margin: 0 0 12px;
+            color: #89b4fa;
+            font-size: 15px;
+        }
+        .modal-box .info-section {
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #313244;
+        }
+        .modal-box .info-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        .modal-box .info-label {
+            color: #a6adc8;
+            font-size: 12px;
+        }
+        .modal-box .info-detail {
+            color: #cdd6f4;
+        }
+        .modal-box .info-warn {
+            color: #f38ba8;
+            font-weight: 500;
+        }
+        .modal-close {
+            position: absolute;
+            top: 10px;
+            right: 14px;
+            cursor: pointer;
+            font-size: 18px;
+            color: #6c7086;
+            line-height: 1;
+            user-select: none;
+        }
+        .modal-close:hover { color: #f38ba8; }
+        .modal-box .highlight { color: #f9e2af; }
+        .history::-webkit-scrollbar { width: 4px; }
+        .history::-webkit-scrollbar-track { background: #313244; border-radius: 4px; }
+        .history::-webkit-scrollbar-thumb { background: #6c7086; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h3>📊 模型监控</h3>
+        <span style="display:flex;align-items:center;gap:8px;">
+            <span class="model-badge normal" id="currentModelBadge">GPT-5-5</span>
+            <span class="info-btn" id="infoBtn">ⓘ</span>
+        </span>
+    </div>
+
+    <div class="modal-overlay" id="infoModal">
+        <div class="modal-box">
+            <span class="modal-close" id="modalClose">✕</span>
+            <h4>ℹ️ GPT-5.5 使用限制</h4>
+            <div class="info-section">
+                <div class="info-label">🆓 免费版</div>
+                <div class="info-detail">5小时窗口内有限使用，限制动态调整</div>
+            </div>
+            <div class="info-section">
+                <div class="info-label">⭐ Plus / Go</div>
+                <div class="info-detail">每 <span class="highlight">3小时 160 条</span>，超标自动降级为 <span class="info-warn">mini</span></div>
+            </div>
+            <div class="info-section">
+                <div class="info-label">🧠 Thinking 模式</div>
+                <div class="info-detail">Plus 手动选；Go 每 5小时 10 条</div>
+            </div>
+            <div class="info-section">
+                <div class="info-warn">⚠️ 作者实测</div>
+                <div class="info-detail">不稳定的网络环境（VPN/节点）和要求 GPT 进行大量编码会大量消耗额度，导致降智</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-row" id="statusRow">
+        <span class="status-dot unknown" id="statusDot"></span>
+        <span id="statusText">未检测</span>
+        <span class="count" id="countText"></span>
+    </div>
+
+    <div class="msg-stats">
+        <div class="msg-row">
+            <span>⏳ 近3h</span>
+            <span style="display:flex;align-items:center;gap:6px;">
+                <span>
+                    <span class="msg-count safe" id="msg3h">0</span>
+                    <span class="msg-limit">/ 150</span>
+                </span>
+                <span id="clearMsgBtn" style="cursor:pointer;font-size:14px;color:#6c7086;user-select:none;line-height:1;" title="清零计数">🗑️</span>
+            </span>
+        </div>
+        <div class="msg-row">
+            <span>📅 近24h</span>
+            <span>
+                <span class="msg-count" id="msg24h">0</span>
+                <span class="msg-limit">(参考)</span>
+            </span>
+        </div>
+    </div>
+
+    <div class="history" id="historyList">
+        <div class="empty">暂无记录</div>
+    </div>
+
+    <div class="actions">
+        <button id="testBtn" style="flex:1;padding:6px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;background:#89b4fa;color:#1e1e2f;">🔬 测试</button>
+        <button id="clearHistoryBtn">🗑️ 清除历史</button>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
