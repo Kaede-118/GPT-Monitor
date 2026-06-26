@@ -247,10 +247,31 @@ The author is a ChatGPT overdoser — hundreds of messages per day — and kept 
 
 ## 📸 Preview
 
-| Normal Model (GPT-5.5) | Downgraded Model (mini) |
-|-------------------|-----------------|
-| 🟢 Green banner + green badge + notification | 🔴 Red banner + red badge + notification |
+### Extension Popup
 
+![Extension Popup](sample%20images/菜单.png)
+![Usage Limit Description](sample%20images/菜单-使用限制说明.png)
+
+### Model Label Comparison
+
+![Official Model & Extended Label](sample%20images/官方模型&扩展标记后.png)
+
+### Normal Model (GPT-5.5)
+
+| Banner | Toast Notification |
+|--------|-------------------|
+| ![Normal Banner](sample%20images/正常banner.png) | ![Normal Toast](sample%20images/正常toast.png) |
+
+### Downgraded Model (mini)
+
+| Banner | Toast Notification |
+|--------|-------------------|
+| ![Downgraded Banner](sample%20images/降智banner.png) | ![Downgraded Toast](sample%20images/降智toast.png) |
+
+### Switch Effect
+
+![Switch to Normal Model Preview](sample%20images/切换为正常模型预览.png)
+![Switch to Downgraded Model Preview](sample%20images/切换为降智模型预览.png)
 ---
 
 ## 🛠️ Installation
