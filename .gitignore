@@ -15,7 +15,9 @@ desktop.ini
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-chatlog*.md
+
+# Chatlog exports
+chatlog/
 
 
 # Build / Dist
