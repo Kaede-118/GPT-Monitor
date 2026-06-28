@@ -51,13 +51,15 @@
 
 ### 扩展弹窗
 
-![扩展弹窗](sample%20images/菜单.png)
-![使用限制说明](sample%20images/菜单-使用限制说明.png)
+| 模型监控 | GPT-5.5 使用限制 |
+| :-------: | :-------------: |
+| <img src="sample%20images/菜单.png" width="430"> | <img src="sample%20images/菜单-使用限制说明.png" width="430"> |
 
 ### 模型标记对比
 
-![官方模型 & 扩展标记后](sample%20images/官方模型&扩展标记后.png)
-
+<p align="center">
+  <img src="sample%20images/官方模型&扩展标记后.png" width="700">
+</p>
 ### 正常模型（GPT-5.5）
 
 | 横幅 | Toast 通知 |
@@ -299,17 +301,19 @@ After all...
 
 ---
 
-## 📸 Preview
+## 📸 Screenshots
 
 ### Extension Popup
 
-![Extension Popup](sample%20images/菜单.png)
-![Usage Limit Description](sample%20images/菜单-使用限制说明.png)
+| Model Monitor | GPT-5.5 Usage Limits |
+| :-----------: | :------------------: |
+| <img src="sample%20images/菜单.png" width="430"> | <img src="sample%20images/菜单-使用限制说明.png" width="430"> |
 
-### Model Label Comparison
+### Model Badge Comparison
 
-![Official Model & Extended Label](sample%20images/官方模型&扩展标记后.png)
-
+<p align="center">
+  <img src="sample%20images/官方模型&扩展标记后.png" width="700">
+</p>
 ### Normal Model (GPT-5.5)
 
 | Banner | Toast Notification |
