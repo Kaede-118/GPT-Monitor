@@ -103,6 +103,12 @@ function doInject(tabId) {
                     if (event.data && event.data.type === 'TIMESTAMPS_UPDATED' && event.data.target === 'storage') {
                         messageTimestamps = event.data.timestamps;
                         renderCountBadge();
+                        // 如果下拉菜单打开，刷新里面的数据
+                        const dropdown = document.getElementById('gpt-history-dropdown');
+                        if (dropdown && dropdown.style.display === 'block') {
+                            const container = document.getElementById('gpt-badge-container');
+                            if (container) updateDropdown(container);
+                        }
                         console.log('📊 消息计数已更新:', messageTimestamps.length);
                     }
                 });
@@ -143,6 +149,20 @@ function doInject(tabId) {
                     } catch (e) {
                         console.warn('⚠️ storage 保存失败:', e);
                     }
+                }
+
+                // ====================================
+                // 格式化持续时间
+                // ====================================
+                function formatDuration(ms) {
+                    if (ms == null || ms < 0) return '-';
+                    const totalSec = Math.floor(ms / 1000);
+                    if (totalSec < 60) return '<1分钟';
+                    const min = Math.floor(totalSec / 60);
+                    if (min < 60) return `${min}分钟`;
+                    const h = Math.floor(min / 60);
+                    const m = min % 60;
+                    return `${h}小时${m}分钟`;
                 }
 
                 // ====================================
@@ -515,15 +535,19 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                             <div style="color:#89b4fa;font-size:15px;font-weight:600;margin:0 0 12px;">ℹ️ GPT-5.5 使用限制</div>
                             <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #313244;">
                                 <div style="color:#a6adc8;font-size:12px;">🆓 免费版</div>
-                                <div style="color:#cdd6f4;">约 <span style="color:#f9e2af;">10 条 / 5小时</span>，超标自动降 <span style="color:#f38ba8;">mini</span></div>
+                                <div style="color:#cdd6f4;"><span style="color:#f9e2af;">约10条/5小时</span>，超标自动降 <span style="color:#f38ba8;">mini</span></div>
                             </div>
                             <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #313244;">
-                                <div style="color:#a6adc8;font-size:12px;">⭐ Plus / Go</div>
-                                <div style="color:#cdd6f4;">每 <span style="color:#f9e2af;">3小时 160 条</span>，超标自动降 <span style="color:#f38ba8;">mini</span></div>
+                                <div style="color:#a6adc8;font-size:12px;">⭐ Plus/Go</div>
+                                <div style="color:#cdd6f4;"><span style="color:#f9e2af;">160条/3小时</span>，超标自动降 <span style="color:#f38ba8;">mini</span></div>
                             </div>
                             <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #313244;">
                                 <div style="color:#a6adc8;font-size:12px;">🧠 Thinking 模式</div>
-                                <div style="color:#cdd6f4;">Plus 手动选；Go 每 5h 10 条</div>
+                                <div style="color:#cdd6f4;">Plus 手动选;<span style="color:#f9e2af;">Go 10条/5小时</span></div>
+                            </div>
+                            <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #313244;">
+                                <div style="color:#a6adc8;font-size:12px;">💡 推测</div>
+                                <div style="color:#cdd6f4;">额度是逐条恢复，不是到点重置</div>
                             </div>
                             <div style="margin-bottom:0;">
                                 <div style="color:#f38ba8;font-weight:500;">⚠️ 作者实测</div>
@@ -552,80 +576,91 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
 
                     const count3hColor = ts3h.length >= 160 ? '#f38ba8' : ts3h.length >= 100 ? '#f9e2af' : '#a6e3a1';
 
+                    // 当前模型持续轮数和持续时间
+                    let currentTurns = 0, currentDurMs = 0;
+                    if (currentModel && modelHistory.length > 0 && modelHistory[0].model === currentModel && modelHistory[0].timestamp) {
+                        const startTime = modelHistory[0].timestamp;
+                        const base = modelHistory[0].turns != null ? modelHistory[0].turns : 0;
+                        currentTurns = base + messageTimestamps.filter(t => t >= startTime).length;
+                        currentDurMs = Date.now() - startTime;
+                    }
+                    const currentDurStr = formatDuration(currentDurMs);
+
                     // 状态
                     const isMiniStatus = currentModel ? currentModel.toLowerCase().includes('mini') : false;
                     const statusDotColor = isMiniStatus ? '#f38ba8' : currentModel ? '#a6e3a1' : '#6c7086';
                     const statusText = isMiniStatus ? '⚠️ 已降智' : currentModel ? '✅ 正常' : '未检测';
-                    const switchCount = modelHistory && modelHistory.length > 0 ? modelHistory.length - 1 : 0;
-                    const switchText = modelHistory && modelHistory.length > 0 ? `切换 ${switchCount} 次` : '';
+
 
                     // 模型徽章样式
                     const badgeBg = isMiniStatus ? '#f38ba8' : currentModel ? '#a6e3a1' : '#313244';
                     const badgeColor = isMiniStatus || currentModel ? '#1e1e2f' : '#a6adc8';
                     const badgeText = currentModel || '未检测';
 
-                    // 历史记录列表
+                    // 当前模型开始时间
+                    let startTimeStr = '';
+                    if (currentModel && modelHistory.length > 0 && modelHistory[0].model === currentModel && modelHistory[0].time) {
+                        startTimeStr = modelHistory[0].time;
+                    }
+                    const modelColor = isMiniStatus ? '#f38ba8' : '#a6e3a1';
+                    const modelEmoji = isMiniStatus ? '🔴' : '🟢';
+
+                    // 历史记录列表（跳过当前模型）
                     let historyHtml = '';
-                    if (!modelHistory || modelHistory.length === 0) {
-                        historyHtml = `<div style="padding:12px 16px;color:#6c7086;text-align:center;font-size:13px;">暂无模型切换记录</div>`;
+                    if (!modelHistory || modelHistory.length === 0 || (modelHistory.length === 1 && modelHistory[0].model === currentModel)) {
+                        historyHtml = `<div style="padding:8px 0;color:#6c7086;text-align:center;font-size:12px;">暂无切换记录</div>`;
                     } else {
                         historyHtml = modelHistory.map((item, index) => {
                             const isMini = item.model.toLowerCase().includes('mini');
                             const isCurrent = item.model === currentModel && index === 0;
+                            if (isCurrent) return '';
+                            const turnsStr = item.turns != null ? item.turns : '-';
+                            const durStr = formatDuration(item.duration);
+                            const c = isMini ? '#f38ba8' : '#a6e3a1';
+                            const emoji = isMini ? '🔴' : '🟢';
                             return `
-                                <div style="
-                                    display: flex; justify-content: space-between; align-items: center;
-                                    padding: 5px 0; border-bottom: 1px solid #313244; font-size: 13px;
-                                    ${isCurrent ? 'background: rgba(137,180,250,0.08);' : ''}
-                                ">
-                                    <span style="color:${isMini ? '#f38ba8' : '#a6e3a1'}; font-weight:${isCurrent ? '600' : '500'};">
-                                        ${isMini ? '🔴' : '🟢'} ${item.model} ${isCurrent ? '← 当前' : ''}
-                                    </span>
-                                    <span style="color:#6c7086;font-size:11px;">${item.time}</span>
+                                <div style="padding:6px 0;border-bottom:1px solid #313244;">
+                                    <div style="font-size:13px;font-weight:500;color:${c};">${emoji} ${item.model}</div>
+                                    <div style="font-size:12px;color:#cdd6f4;margin-top:2px;">${turnsStr}轮 | ${durStr}</div>
+                                    <div style="font-size:11px;color:#6c7086;margin-top:1px;">${item.time}</div>
                                 </div>
                             `;
-                        }).join('');
+                        }).filter(Boolean).join('');
                     }
 
                     dropdown.innerHTML = `
                         <div style="padding:12px 16px;">
-                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;border-bottom:1px solid #313244;padding-bottom:10px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid #313244;padding-bottom:8px;">
                                 <span style="font-size:15px;color:#89b4fa;font-weight:bold;">📊 模型监控</span>
-                                <span style="display:flex;align-items:center;gap:8px;">
-                                    <span style="font-size:12px;font-weight:600;padding:2px 12px;border-radius:20px;background:${badgeBg};color:${badgeColor};">${badgeText}</span>
-                                    <span data-action="usage-info" style="cursor:pointer;font-size:16px;color:#6c7086;user-select:none;line-height:1;">ⓘ</span>
-                                </span>
+                                <span data-action="usage-info" style="cursor:pointer;font-size:16px;color:#6c7086;user-select:none;line-height:1;">ⓘ</span>
                             </div>
-                            <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:#a6adc8;margin-bottom:8px;">
-                                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusDotColor};"></span>
-                                <span>${statusText}</span>
-                                <span style="color:#6c7086;font-size:11px;margin-left:auto;">${switchText}</span>
-                            </div>
-                            <div style="margin:6px 0;padding:6px 0;border-top:1px solid #313244;font-size:13px;">
-                                <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;">
-                                    <span>⏳ 近3h</span>
-                                    <span style="display:flex;align-items:center;gap:6px;">
+                            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #313244;">
+                                <div>
+                                    <div style="font-size:14px;font-weight:600;color:${modelColor};">${modelEmoji} ${badgeText}</div>
+                                    <div style="font-size:12px;color:#cdd6f4;margin-top:3px;">${currentTurns}轮 | ${currentDurStr}</div>
+                                    <div style="font-size:11px;color:#585b70;margin-top:2px;">${startTimeStr}</div>
+                                </div>
+                                <div style="font-size:13px;white-space:nowrap;">
+                                    <div style="display:flex;align-items:center;gap:6px;">
+                                        <span>⏳ 近3h</span>
                                         <span>
                                             <span style="font-weight:600;color:${count3hColor};">${ts3h.length}</span>
                                             <span style="color:#6c7086;font-size:11px;"> / 160</span>
                                         </span>
-                                        <span data-action="clear-msg" style="cursor:pointer;font-size:14px;color:#6c7086;user-select:none;line-height:1;" title="清零计数">🗑️</span>
-                                    </span>
-                                </div>
-                                <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;">
-                                    <span>📅 近24h</span>
-                                    <span>
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
+                                        <span>📅 近24h</span>
                                         <span style="font-weight:600;color:#cdd6f4;">${ts24h.length}</span>
-                                        <span style="color:#6c7086;font-size:11px;"> (参考)</span>
-                                    </span>
+                                    </div>
                                 </div>
                             </div>
-                            <div style="max-height:260px;overflow-y:auto;">
+                            <div style="color:#585b70;font-size:11px;padding:6px 0;">模型切换历史</div>
+                            <div style="max-height:220px;overflow-y:auto;">
                                 ${historyHtml}
                             </div>
-                            <div style="display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid #313244;">
+                            <div style="display:flex;gap:8px;padding-top:8px;border-top:1px solid #313244;">
                                 <button data-action="test-toggle" style="flex:1;padding:6px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;background:#89b4fa;color:#1e1e2f;">🔬 测试</button>
-                                <button data-action="clear-history" style="flex:1;padding:6px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;background:#313244;color:#cdd6f4;">🗑️ 清除历史</button>
+                                <button data-action="clear-history" style="flex:1;padding:6px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;background:#313244;color:#cdd6f4;">🗑️ 清除监控数据</button>
                             </div>
                         </div>
                     `;
@@ -635,17 +670,20 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                         e.stopPropagation();
                         showUsageInfoInDropdown();
                     });
-                    dropdown.querySelector('[data-action="clear-msg"]')?.addEventListener('click', async (e) => {
-                        e.stopPropagation();
-                        if (!confirm('确定清零消息计数？')) return;
-                        messageTimestamps = [];
-                        await saveToStorage({ messageTimestamps: [] });
-                        await updateDropdown(container);
-                    });
                     dropdown.querySelector('[data-action="clear-history"]')?.addEventListener('click', async (e) => {
                         e.stopPropagation();
+                        if (!confirm('确认清除监控数据？\n\n将删除：\n• 当前模型状态\n• 模型切换历史\n• 近3h消息统计\n• 近24h消息统计\n\n该操作不可撤销。')) return;
+                        messageTimestamps = [];
                         modelHistory = [];
-                        await saveToStorage({ modelHistory: [] });
+                        currentModel = null;
+                        detected = false;
+                        await saveToStorage({ messageTimestamps: [], modelHistory: [], currentModel: null, detected: false });
+                        // 移除 UI 元素
+                        document.getElementById('gpt-badge-container')?.remove();
+                        document.getElementById('gpt-count-badge')?.remove();
+                        document.getElementById('gpt-display-el')?.remove();
+                        document.getElementById('gpt-model-banner')?.remove();
+                        renderCountBadge();
                         await updateDropdown(container);
                     });
                     dropdown.querySelector('[data-action="test-toggle"]')?.addEventListener('click', async (e) => {
@@ -680,9 +718,16 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                         month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
                     });
 
-                    // ✅ 更新内存
+                    // ✅ 计算旧模型的持续轮数和持续时间
+                    if (currentModel && modelHistory.length > 0 && modelHistory[0].model === currentModel) {
+                        const startTime = modelHistory[0].timestamp;
+                        modelHistory[0].turns = messageTimestamps.filter(t => t >= startTime).length;
+                        modelHistory[0].duration = Date.now() - startTime;
+                    }
+
+                    // ✅ 更新内存（每次切换/检测都由消息触发，新模型固定算 1 轮）
                     currentModel = modelName;
-                    modelHistory.unshift({ model: modelName, time: timeStr, timestamp: now.getTime() });
+                    modelHistory.unshift({ model: modelName, time: timeStr, timestamp: now.getTime(), turns: 1, duration: 0 });
                     if (modelHistory.length > 50) modelHistory = modelHistory.slice(0, 50);
 
                     // ✅ 更新 UI

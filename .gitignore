@@ -43,6 +43,9 @@ pnpm-lock.yaml
 
 
 
+# Ignore folder (personal data)
+ignore/
+
 # Extension specific
 *.zip
 *.crx
