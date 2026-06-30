@@ -1,4 +1,4 @@
-# GPT-Monitor
+# 😺GPT-Monitor
 
 > 🚀 Chrome 扩展，实时监控 ChatGPT 当前使用的模型，并在切换到“降智”模型时发出醒目提醒。
 
@@ -242,7 +242,7 @@ chrome://extensions/ → 开发者模式 → 加载已解压的扩展
 MIT
 
 
-# GPT-Monitor
+# 😺GPT-Monitor
 
 > 🚀 Chrome extension that monitors ChatGPT's current model in real time and alerts you when it switches to a "downgraded" (mini) model.
 
