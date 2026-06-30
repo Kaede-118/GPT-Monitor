@@ -554,7 +554,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                                 <div style="color:#cdd6f4;">不稳定的网络环境（VPN/节点）和要求 GPT 进行大量编码会大量消耗额度，导致降智</div>
                             </div>
                             <div style="text-align:center;padding-top:8px;border-top:1px solid #313244;margin-top:10px;">
-                                <span data-action="back-to-dropdown" style="cursor:pointer;color:#89b4fa;font-size:12px;">← 返回</span>
+                                <button data-action="back-to-dropdown" style="width:100%;padding:6px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;background:#313244;color:#cdd6f4;">← 返回</button>
                             </div>
                         </div>
                     `;

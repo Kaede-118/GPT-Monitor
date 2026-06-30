@@ -58,70 +58,20 @@
             user-select: none;
         }
         .info-btn:hover { color: #89b4fa; }
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.6);
-            z-index: 999999;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-        .modal-overlay.show { display: flex; }
-        .modal-box {
-            background: #1e1e2f;
-            border: 1px solid #313244;
-            border-radius: 12px;
-            padding: 20px;
-            max-width: 320px;
-            width: 100%;
-            box-shadow: 0 8px 40px rgba(0,0,0,0.6);
-            font-size: 13px;
-            line-height: 1.6;
-            color: #cdd6f4;
-            max-height: 80vh;
-            overflow-y: auto;
-            position: relative;
-        }
-        .modal-box h4 {
-            margin: 0 0 12px;
-            color: #89b4fa;
-            font-size: 15px;
-        }
-        .modal-box .info-section {
+        .info-section {
             margin-bottom: 10px;
             padding-bottom: 10px;
             border-bottom: 1px solid #313244;
         }
-        .modal-box .info-section:last-child {
+        .info-section:last-child {
             border-bottom: none;
             margin-bottom: 0;
             padding-bottom: 0;
         }
-        .modal-box .info-label {
-            color: #a6adc8;
-            font-size: 12px;
-        }
-        .modal-box .info-detail {
-            color: #cdd6f4;
-        }
-        .modal-box .info-warn {
-            color: #f38ba8;
-            font-weight: 500;
-        }
-        .modal-close {
-            position: absolute;
-            top: 10px;
-            right: 14px;
-            cursor: pointer;
-            font-size: 18px;
-            color: #6c7086;
-            line-height: 1;
-            user-select: none;
-        }
-        .modal-close:hover { color: #f38ba8; }
-        .modal-box .highlight { color: #f9e2af; }
+        .info-label { color: #a6adc8; font-size: 12px; }
+        .info-detail { color: #cdd6f4; }
+        .info-warn { color: #f38ba8; font-weight: 500; }
+        .highlight { color: #f9e2af; }
         .history::-webkit-scrollbar { width: 4px; }
         .history::-webkit-scrollbar-track { background: #313244; border-radius: 4px; }
         .history::-webkit-scrollbar-thumb { background: #6c7086; border-radius: 4px; }
@@ -133,60 +83,31 @@
         <span class="info-btn" id="infoBtn">ⓘ</span>
     </div>
 
-    <div class="modal-overlay" id="infoModal">
-        <div class="modal-box">
-            <span class="modal-close" id="modalClose">✕</span>
-            <h4>ℹ️ GPT-5.5 使用限制</h4>
-            <div class="info-section">
-                <div class="info-label">🆓 免费版</div>
-                <div class="info-detail"><span class="highlight">约10条/5小时</span>，超标自动降 <span class="info-warn">mini</span></div>
-            </div>
-            <div class="info-section">
-                <div class="info-label">⭐ Plus/Go</div>
-                <div class="info-detail"><span class="highlight">160条/3小时</span>，超标自动降 <span class="info-warn">mini</span></div>
-            </div>
-            <div class="info-section">
-                <div class="info-label">🧠 Thinking 模式</div>
-                <div class="info-detail">Plus 手动选;<span class="highlight">Go 10条/5小时</span></div>
-            </div>
-            <div class="info-section">
-                <div class="info-label">💡 推测</div>
-                <div class="info-detail">额度是逐条恢复，不是到点重置</div>
-            </div>
-            <div class="info-section">
-                <div class="info-warn">⚠️ 作者实测</div>
-                <div class="info-detail">不稳定的网络环境（VPN/节点）和要求 GPT 进行大量编码会大量消耗额度，导致降智</div>
+    <div id="mainPanel">
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #313244;">
+            <div id="currentModelCard"></div>
+            <div style="font-size:13px;white-space:nowrap;">
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span>⏳ 近3h</span>
+                    <span>
+                        <span class="msg-count safe" id="msg3h">0</span>
+                        <span style="color:#6c7086;font-size:11px;"> / 160</span>
+                    </span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
+                    <span>📅 近24h</span>
+                    <span style="font-weight:600;" id="msg24h">0</span>
+                </div>
             </div>
         </div>
-    </div>
-
-    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #313244;">
-        <div id="currentModelCard"></div>
-        <div style="font-size:13px;white-space:nowrap;">
-            <div style="display:flex;align-items:center;gap:6px;">
-                <span>⏳ 近3h</span>
-                <span>
-                    <span class="msg-count safe" id="msg3h">0</span>
-                    <span style="color:#6c7086;font-size:11px;"> / 160</span>
-                </span>
-
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
-                <span>📅 近24h</span>
-                <span style="font-weight:600;" id="msg24h">0</span>
-            </div>
+        <div style="color:#585b70;font-size:11px;padding:6px 0;">模型切换历史</div>
+        <div class="history" id="historyList">
+            <div style="padding:8px 0;color:#6c7086;text-align:center;font-size:12px;">暂无切换记录</div>
         </div>
-    </div>
-
-    <div style="color:#585b70;font-size:11px;padding:6px 0;">模型切换历史</div>
-
-    <div class="history" id="historyList">
-        <div style="padding:8px 0;color:#6c7086;text-align:center;font-size:12px;">暂无切换记录</div>
-    </div>
-
-    <div class="actions">
-        <button id="testBtn" style="flex:1;padding:6px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;background:#89b4fa;color:#1e1e2f;">🔬 测试</button>
-        <button id="clearHistoryBtn">🗑️ 清除监控数据</button>
+        <div class="actions">
+            <button id="testBtn" style="flex:1;padding:6px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;background:#89b4fa;color:#1e1e2f;">🔬 测试</button>
+            <button id="clearHistoryBtn">🗑️ 清除监控数据</button>
+        </div>
     </div>
 
     <script src="popup.js"></script>

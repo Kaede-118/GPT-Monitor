@@ -90,15 +90,53 @@ async function clearHistory() {
     render();
 }
 
-// ℹ️ 使用限制弹窗
-const infoBtn = document.getElementById('infoBtn');
-const infoModal = document.getElementById('infoModal');
-const modalClose = document.getElementById('modalClose');
-infoBtn.addEventListener('click', () => infoModal.classList.add('show'));
-modalClose.addEventListener('click', () => infoModal.classList.remove('show'));
-infoModal.addEventListener('click', (e) => { if (e.target === infoModal) infoModal.classList.remove('show'); });
+// ℹ️ 使用限制（内联替换，与 dropdown 一致）
+var savedMainHtml = '';
+function showUsageInfo() {
+    const panel = document.getElementById('mainPanel');
+    savedMainHtml = panel.innerHTML;
+    panel.innerHTML = `
+        <div style="font-size:13px;line-height:1.6;">
+            <div style="color:#89b4fa;font-size:15px;font-weight:600;margin:0 0 12px;">ℹ️ GPT-5.5 使用限制</div>
+            <div class="info-section">
+                <div class="info-label">🆓 免费版</div>
+                <div class="info-detail"><span class="highlight">约10条/5小时</span>，超标自动降 <span class="info-warn">mini</span></div>
+            </div>
+            <div class="info-section">
+                <div class="info-label">⭐ Plus/Go</div>
+                <div class="info-detail"><span class="highlight">160条/3小时</span>，超标自动降 <span class="info-warn">mini</span></div>
+            </div>
+            <div class="info-section">
+                <div class="info-label">🧠 Thinking 模式</div>
+                <div class="info-detail">Plus 手动选;<span class="highlight">Go 10条/5小时</span></div>
+            </div>
+            <div class="info-section">
+                <div class="info-label">💡 推测</div>
+                <div class="info-detail">额度是逐条恢复，不是到点重置</div>
+            </div>
+            <div class="info-section">
+                <div class="info-warn">⚠️ 作者实测</div>
+                <div class="info-detail">不稳定的网络环境（VPN/节点）和要求 GPT 进行大量编码会大量消耗额度，导致降智</div>
+            </div>
+            <div style="text-align:center;padding-top:10px;border-top:1px solid #313244;margin-top:10px;">
+                <button id="usageBackBtn" style="width:100%;padding:6px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;background:#313244;color:#cdd6f4;">← 返回</button>
+            </div>
+        </div>
+    `;
+    document.getElementById('usageBackBtn').addEventListener('click', showMainPanel);
+}
+function showMainPanel() {
+    document.getElementById('mainPanel').innerHTML = savedMainHtml;
+    savedMainHtml = '';
+    // 重新绑定事件
+    document.getElementById('testBtn').addEventListener('click', testBtnHandler);
+    document.getElementById('clearHistoryBtn').addEventListener('click', clearHistory);
+    render();
+}
 
-document.getElementById('testBtn').addEventListener('click', async () => {
+document.getElementById('infoBtn').addEventListener('click', showUsageInfo);
+
+const testBtnHandler = async () => {
     const data = await chrome.storage.local.get(['currentModel']);
     const cur = data.currentModel || '';
     const next = cur.toLowerCase().includes('mini') ? 'gpt-test' : 'gpt-test-mini';
@@ -111,7 +149,8 @@ document.getElementById('testBtn').addEventListener('click', async () => {
             args: [next]
         });
     }
-});
+};
+document.getElementById('testBtn').addEventListener('click', testBtnHandler);
 document.getElementById('clearHistoryBtn').addEventListener('click', clearHistory);
 
 render();
