@@ -32,7 +32,7 @@ async function render() {
     let currentTurns = 0, currentDurMs = 0;
     if (currentModel && history.length > 0 && history[0].model === currentModel && history[0].timestamp) {
         currentTurns = history[0].turns || 0;
-        currentDurMs = history[0].duration != null ? history[0].duration : Date.now() - history[0].timestamp;
+        currentDurMs = Date.now() - history[0].timestamp;
     }
     const currentDurStr = formatDuration(currentDurMs);
 
