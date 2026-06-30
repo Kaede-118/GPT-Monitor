@@ -31,10 +31,8 @@ async function render() {
 
     let currentTurns = 0, currentDurMs = 0;
     if (currentModel && history.length > 0 && history[0].model === currentModel && history[0].timestamp) {
-        const startTime = history[0].timestamp;
-        const base = history[0].turns != null ? history[0].turns : 0;
-        currentTurns = base + messageTimestamps.filter(t => t >= startTime).length;
-        currentDurMs = Date.now() - startTime;
+        currentTurns = history[0].turns || 0;
+        currentDurMs = history[0].duration != null ? history[0].duration : Date.now() - history[0].timestamp;
     }
     const currentDurStr = formatDuration(currentDurMs);
 

@@ -576,13 +576,11 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
 
                     const count3hColor = ts3h.length >= 160 ? '#f38ba8' : ts3h.length >= 100 ? '#f9e2af' : '#a6e3a1';
 
-                    // 当前模型持续轮数和持续时间
+                    // 当前模型持续轮数和持续时间（turns 由 updateModel 实时维护）
                     let currentTurns = 0, currentDurMs = 0;
                     if (currentModel && modelHistory.length > 0 && modelHistory[0].model === currentModel && modelHistory[0].timestamp) {
-                        const startTime = modelHistory[0].timestamp;
-                        const base = modelHistory[0].turns != null ? modelHistory[0].turns : 0;
-                        currentTurns = base + messageTimestamps.filter(t => t >= startTime).length;
-                        currentDurMs = Date.now() - startTime;
+                        currentTurns = modelHistory[0].turns || 0;
+                        currentDurMs = Date.now() - modelHistory[0].timestamp;
                     }
                     const currentDurStr = formatDuration(currentDurMs);
 
@@ -703,6 +701,13 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                     console.log(`🐛 [${_ts()}] [${_iid}] [updateModel] modelName:${modelName} currentModel:${currentModel} isMini:${isMini}`);
 
                     if (modelName === currentModel) {
+                        // turns 由 updateModel() 实时维护。
+                        // 每次成功解析到 resolved_model_slug 视为完成一轮回复。
+                        // 不依赖 messageTimestamps，避免跨 24h 后统计失真。
+                        if (modelHistory.length > 0) {
+                            modelHistory[0].turns = (modelHistory[0].turns || 0) + 1;
+                            await saveToStorage({ modelHistory });
+                        }
                         console.log(`ℹ️ [${_ts()}] [${_iid}] 模型未变化:`, modelName);
                         // 重绘徽章，防止被 React 重新渲染清除
                         renderLogoBadge(modelName, isMini);
@@ -718,14 +723,12 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                         month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
                     });
 
-                    // ✅ 计算旧模型的持续轮数和持续时间
+                    // ✅ 计算旧模型的持续时间（turns 已由 updateModel 实时维护，不再重算）
                     if (currentModel && modelHistory.length > 0 && modelHistory[0].model === currentModel) {
-                        const startTime = modelHistory[0].timestamp;
-                        modelHistory[0].turns = messageTimestamps.filter(t => t >= startTime).length;
-                        modelHistory[0].duration = Date.now() - startTime;
+                        modelHistory[0].duration = Date.now() - modelHistory[0].timestamp;
                     }
 
-                    // ✅ 更新内存（每次切换/检测都由消息触发，新模型固定算 1 轮）
+                    // ✅ 更新内存（每次 SSE 解析到新模型，视为该模型的第一轮完成）
                     currentModel = modelName;
                     modelHistory.unshift({ model: modelName, time: timeStr, timestamp: now.getTime(), turns: 1, duration: 0 });
                     if (modelHistory.length > 50) modelHistory = modelHistory.slice(0, 50);
