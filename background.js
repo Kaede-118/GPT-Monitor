@@ -280,6 +280,10 @@ function doInject(tabId) {
 // 渲染 Logo 旁边的模型徽章（放在 Logo 按钮右边）
 // ====================================
 function renderLogoBadge(modelName, isMini) {
+    const hasModel = !!currentModel;
+    const badgeBg = !hasModel ? 'rgba(108,112,134,0.15)' : (isMini ? '#dc2626' : 'rgba(34,197,94,0.15)');
+    const badgeColor = !hasModel ? '#a6adc8' : (isMini ? '#ffffff' : '#22c55e');
+    const badgeBorder = !hasModel ? '1px solid rgba(108,112,134,0.25)' : (isMini ? '1px solid #dc2626' : '1px solid rgba(34,197,94,0.3)');
     console.log('🔄 renderLogoBadge:', modelName, isMini);
 
     // ✅ 找模型选择器按钮（ChatGPT logo）
@@ -298,9 +302,9 @@ function renderLogoBadge(modelName, isMini) {
         const badge = container.querySelector('#gpt-logo-badge');
         if (badge) {
             badge.textContent = modelName;
-            badge.style.background = isMini ? '#dc2626' : 'rgba(34, 197, 94, 0.15)';
-            badge.style.color = isMini ? '#ffffff' : '#22c55e';
-            badge.style.border = isMini ? '1px solid #dc2626' : '1px solid rgba(34, 197, 94, 0.3)';
+            badge.style.background = badgeBg;
+            badge.style.color = badgeColor;
+            badge.style.border = badgeBorder;
         }
         updateDropdown(container);
         return;
@@ -328,9 +332,9 @@ function renderLogoBadge(modelName, isMini) {
         font-size: 12px;
         font-weight: 600;
         font-family: system-ui, sans-serif;
-        background: ${isMini ? '#dc2626' : 'rgba(34, 197, 94, 0.15)'};
-        color: ${isMini ? '#ffffff' : '#22c55e'};
-        border: 1px solid ${isMini ? '#dc2626' : 'rgba(34, 197, 94, 0.3)'};
+        background: ${badgeBg};
+        color: ${badgeColor};
+        border: ${badgeBorder};
         transition: all 0.3s ease;
         user-select: none;
         line-height: 1.6;
@@ -382,6 +386,8 @@ function renderLogoBadge(modelName, isMini) {
         const style = document.createElement('style');
         style.id = 'gpt-dropdown-style';
         style.textContent = `
+            #gpt-history-dropdown { user-select: text; -webkit-user-select: text; }
+            #gpt-history-dropdown * { user-select: text; -webkit-user-select: text; }
             #gpt-history-dropdown::-webkit-scrollbar { width: 4px; }
             #gpt-history-dropdown::-webkit-scrollbar-track { background: #313244; border-radius: 4px; }
             #gpt-history-dropdown::-webkit-scrollbar-thumb { background: #6c7086; border-radius: 4px; }
@@ -629,7 +635,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                     dropdown.innerHTML = `
                         <div style="padding:12px 16px;">
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid #313244;padding-bottom:8px;">
-                                <span style="font-size:15px;color:#89b4fa;font-weight:bold;">📊 模型监控</span>
+                                <span style="font-size:15px;color:#89b4fa;font-weight:bold;">🐱GPT-Monitor</span>
                                 <span data-action="usage-info" style="cursor:pointer;font-size:16px;color:#6c7086;user-select:none;line-height:1;">ⓘ</span>
                             </div>
                             <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #313244;">
@@ -888,14 +894,39 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                 };
 
                 // ====================================
+                // 监听 SPA 路由变化
+                // ====================================
+                let _lastUrl = location.href;
+                function _checkBadgeAfterNav() {
+                    const cur = location.href;
+                    if (cur === _lastUrl) return;
+                    _lastUrl = cur;
+                    console.log(`🔄 URL 变化: ${cur}`);
+                    setTimeout(() => {
+                        if (!document.getElementById('gpt-badge-container')) {
+                            const name = currentModel || 'GPT-Monitor';
+                            const mini = currentModel ? currentModel.toLowerCase().includes('mini') : false;
+                            renderLogoBadge(name, mini);
+                            if (currentModel) renderMoreButtonBadge(currentModel, mini);
+                        }
+                    }, 2000);
+                }
+                const _origPush = history.pushState.bind(history);
+                const _origReplace = history.replaceState.bind(history);
+                history.pushState = function(...a) { _origPush(...a); _checkBadgeAfterNav(); };
+                history.replaceState = function(...a) { _origReplace(...a); _checkBadgeAfterNav(); };
+                window.addEventListener('popstate', _checkBadgeAfterNav);
+
+                // ====================================
                 // 启动
                 // ====================================
                 showStartupTip();
 
-                if (currentModel) {
-                    const isMini = currentModel.toLowerCase().includes('mini');
-                    renderLogoBadge(currentModel, isMini);
-                    renderMoreButtonBadge(currentModel, isMini);
+                {
+                    const displayName = currentModel || 'GPT-Monitor';
+                    const isMini = currentModel ? currentModel.toLowerCase().includes('mini') : false;
+                    renderLogoBadge(displayName, isMini);
+                    if (currentModel) renderMoreButtonBadge(currentModel, isMini);
                 }
 
                 // 尝试创建计数徽章（即使没有模型数据也显示）
