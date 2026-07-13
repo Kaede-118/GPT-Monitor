@@ -541,15 +541,16 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                             <div style="color:#89b4fa;font-size:15px;font-weight:600;margin:0 0 12px;">ℹ️ GPT-5.5 使用限制</div>
                             <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #313244;">
                                 <div style="color:#a6adc8;font-size:12px;">🆓 免费版</div>
-                                <div style="color:#cdd6f4;"><span style="color:#f9e2af;">约10条/5小时</span>，超标自动降 <span style="color:#f38ba8;">mini</span></div>
+                                <div style="color:#cdd6f4;"><span style="color:#f9e2af;">约10轮/5小时</span>，超标自动降 <span style="color:#f38ba8;">mini</span></div>
                             </div>
                             <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #313244;">
                                 <div style="color:#a6adc8;font-size:12px;">⭐ Plus/Go</div>
-                                <div style="color:#cdd6f4;"><span style="color:#f9e2af;">160条/3小时</span>，超标自动降 <span style="color:#f38ba8;">mini</span></div>
+                                <div style="color:#cdd6f4;"><span style="color:#f9e2af;">160轮/3小时</span>，超标自动降 <span style="color:#f38ba8;">mini</span></div>
+                                <div style="color:#585b70;font-size:11px;margin-top:1px;">≈53轮/小时 ≈0.88轮/分钟</div>
                             </div>
                             <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #313244;">
                                 <div style="color:#a6adc8;font-size:12px;">🧠 Thinking 模式</div>
-                                <div style="color:#cdd6f4;">Plus 手动选;<span style="color:#f9e2af;">Go 10条/5小时</span></div>
+                                <div style="color:#cdd6f4;">Plus 手动选;<span style="color:#f9e2af;">Go 10轮/5小时</span></div>
                             </div>
                             <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #313244;">
                                 <div style="color:#a6adc8;font-size:12px;">💡 推测</div>
@@ -626,10 +627,76 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                                 <div style="padding:6px 0;border-bottom:1px solid #313244;">
                                     <div style="font-size:13px;font-weight:500;color:${c};">${emoji} ${item.model}</div>
                                     <div style="font-size:12px;color:#cdd6f4;margin-top:2px;">${turnsStr}轮 | ${durStr}</div>
-                                    <div style="font-size:11px;color:#6c7086;margin-top:1px;">${item.time}</div>
+                                    <div style="font-size:11px;color:#6c7086;margin-top:1px;">📌 ${item.time}</div>
                                 </div>
                             `;
                         }).filter(Boolean).join('');
+                    }
+
+                    const ts1h = messageTimestamps.filter(t => now - t < 60 * 60 * 1000);
+                    const count1h = ts1h.length;
+                    const statusEmoji = count1h <= 29 ? '🟢' : count1h <= 53 ? '🟡' : count1h <= 79 ? '🟠' : '🔴';
+
+                    const lastActiveTs = (currentModel && modelHistory.length > 0 && modelHistory[0].model === currentModel && modelHistory[0].lastActive) ? modelHistory[0].lastActive : (messageTimestamps.length > 0 ? messageTimestamps[messageTimestamps.length - 1] : null);
+                    let activeTimeStr = '暂无';
+                    if (lastActiveTs) {
+                        const diff = now - lastActiveTs;
+                        if (diff < 60000) activeTimeStr = '刚刚';
+                        else if (diff < 3600000) activeTimeStr = `${Math.floor(diff / 60000)}分钟前`;
+                        else {
+                            const h = Math.floor(diff / 3600000);
+                            const m = Math.floor((diff % 3600000) / 60000);
+                            activeTimeStr = `${h}小时${m}分钟前`;
+                        }
+                    }
+
+                    function fmtRemaining(ms) {
+                        if (ms <= 0) return '0m';
+                        const totalMin = Math.floor(ms / 60000);
+                        if (totalMin < 60) return `${totalMin}m`;
+                        const h = Math.floor(totalMin / 60);
+                        const m = totalMin % 60;
+                        return m > 0 ? `${h}h${m}m` : `${h}h`;
+                    }
+                    function fmtClock(ts) {
+                        const d = new Date(ts);
+                        return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                    }
+
+                    let recoveryHtml = '';
+                    if (ts3h.length === 0) {
+                        recoveryHtml = `
+                            <div style="color:#585b70;font-size:12px;padding:6px 0;border-bottom:1px solid #313244;">
+                                <div style="font-weight:500;color:#6c7086;margin-bottom:4px;">⌛ 恢复预测</div>
+                                <div style="display:flex;justify-content:space-between;padding:2px 0;"><span style="color:#cdd6f4;">+1</span><span style="color:#585b70;">—</span></div>
+                                <div style="display:flex;justify-content:space-between;padding:2px 0;"><span style="color:#cdd6f4;">+10</span><span style="color:#585b70;">—</span></div>
+                                <div style="display:flex;justify-content:space-between;padding:2px 0;"><span style="color:#cdd6f4;">✓</span><span style="color:#585b70;">—</span></div>
+                            </div>`;
+                    } else {
+                        const sorted = [...ts3h].sort((a, b) => a - b);
+                        const t1 = sorted[0] + 3 * 60 * 60 * 1000;
+                        const r1 = Math.max(0, t1 - now);
+                        const r1Str = fmtRemaining(r1);
+                        const t1Clock = fmtClock(t1);
+
+                        let r10Str = '—', t10Clock = '';
+                        if (sorted.length >= 10) {
+                            const t10 = sorted[9] + 3 * 60 * 60 * 1000;
+                            r10Str = fmtRemaining(Math.max(0, t10 - now));
+                            t10Clock = fmtClock(t10);
+                        }
+
+                        const tAll = sorted[sorted.length - 1] + 3 * 60 * 60 * 1000;
+                        const rAllStr = fmtRemaining(Math.max(0, tAll - now));
+                        const tAllClock = fmtClock(tAll);
+
+                        recoveryHtml = `
+                            <div style="color:#585b70;font-size:12px;padding:6px 0;border-bottom:1px solid #313244;">
+                                <div style="font-weight:500;color:#6c7086;margin-bottom:4px;">⌛ 恢复预测</div>
+                                <div style="display:flex;padding:2px 0;"><span style="color:#cdd6f4;width:30px;">+1</span><span style="color:#cdd6f4;flex:1;text-align:right;">${r1Str}</span><span style="color:#585b70;text-align:right;width:70px;">(${t1Clock})</span></div>
+                                <div style="display:flex;padding:2px 0;"><span style="color:#cdd6f4;width:30px;">+10</span><span style="color:#cdd6f4;flex:1;text-align:right;">${r10Str}</span><span style="color:#585b70;text-align:right;width:70px;">${r10Str !== '—' ? `(${t10Clock})` : ''}</span></div>
+                                <div style="display:flex;padding:2px 0;"><span style="color:#cdd6f4;width:30px;">✓</span><span style="color:#cdd6f4;flex:1;text-align:right;">${rAllStr}</span><span style="color:#585b70;text-align:right;width:70px;">(${tAllClock})</span></div>
+                            </div>`;
                     }
 
                     dropdown.innerHTML = `
@@ -638,14 +705,25 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                                 <span style="font-size:15px;color:#89b4fa;font-weight:bold;">🐱GPT-Monitor</span>
                                 <span data-action="usage-info" style="cursor:pointer;font-size:16px;color:#6c7086;user-select:none;line-height:1;">ⓘ</span>
                             </div>
-                            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #313244;">
+                            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #313244;align-items:flex-start;">
                                 <div>
                                     <div style="font-size:14px;font-weight:600;color:${modelColor};">${modelEmoji} ${badgeText}</div>
                                     <div style="font-size:12px;color:#cdd6f4;margin-top:3px;">${currentTurns}轮 | ${currentDurStr}</div>
-                                    <div style="font-size:11px;color:#585b70;margin-top:2px;">${startTimeStr}</div>
+                                    <div style="font-size:12px;color:#6c7086;margin-top:2px;">🕒 活跃 ${activeTimeStr}</div>
+                                    <div style="font-size:11px;color:#585b70;margin-top:2px;">📌 ${startTimeStr}</div>
                                 </div>
                                 <div style="font-size:13px;white-space:nowrap;">
                                     <div style="display:flex;align-items:center;gap:6px;">
+                                        <span>🔥 近1h</span>
+                                        <span style="font-weight:600;">${count1h}</span>
+                                        <span>${statusEmoji}</span>
+                                        <span title="(160/3=53.33轮/小时)
+🟢0~29
+🟡30~53
+🟠54~79
+🔴80+" style="cursor:help;color:#585b70;font-size:11px;">ⓘ</span>
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
                                         <span>⏳ 近3h</span>
                                         <span>
                                             <span style="font-weight:600;color:${count3hColor};">${ts3h.length}</span>
@@ -658,6 +736,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                                     </div>
                                 </div>
                             </div>
+                            ${recoveryHtml}
                             <div style="color:#585b70;font-size:11px;padding:6px 0;">模型切换历史</div>
                             <div style="max-height:220px;overflow-y:auto;">
                                 ${historyHtml}
@@ -712,6 +791,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                         // 不依赖 messageTimestamps，避免跨 24h 后统计失真。
                         if (modelHistory.length > 0) {
                             modelHistory[0].turns = (modelHistory[0].turns || 0) + 1;
+                            modelHistory[0].lastActive = Date.now();
                             await saveToStorage({ modelHistory });
                         }
                         console.log(`ℹ️ [${_ts()}] [${_iid}] 模型未变化:`, modelName);
@@ -736,7 +816,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
 
                     // ✅ 更新内存（每次 SSE 解析到新模型，视为该模型的第一轮完成）
                     currentModel = modelName;
-                    modelHistory.unshift({ model: modelName, time: timeStr, timestamp: now.getTime(), turns: 1, duration: 0 });
+                    modelHistory.unshift({ model: modelName, time: timeStr, timestamp: now.getTime(), turns: 1, duration: 0, lastActive: now.getTime() });
                     if (modelHistory.length > 50) modelHistory = modelHistory.slice(0, 50);
 
                     // ✅ 更新 UI

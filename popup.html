@@ -84,22 +84,11 @@
     </div>
 
     <div id="mainPanel">
-        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #313244;">
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #313244;align-items:flex-start;">
             <div id="currentModelCard"></div>
-            <div style="font-size:13px;white-space:nowrap;">
-                <div style="display:flex;align-items:center;gap:6px;">
-                    <span>⏳ 近3h</span>
-                    <span>
-                        <span class="msg-count safe" id="msg3h">0</span>
-                        <span style="color:#6c7086;font-size:11px;"> / 160</span>
-                    </span>
-                </div>
-                <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
-                    <span>📅 近24h</span>
-                    <span style="font-weight:600;" id="msg24h">0</span>
-                </div>
-            </div>
+            <div id="rightStats"></div>
         </div>
+        <div id="recoveryPrediction"></div>
         <div style="color:#585b70;font-size:11px;padding:6px 0;">模型切换历史</div>
         <div class="history" id="historyList">
             <div style="padding:8px 0;color:#6c7086;text-align:center;font-size:12px;">暂无切换记录</div>

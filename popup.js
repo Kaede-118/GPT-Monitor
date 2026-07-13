@@ -10,6 +10,27 @@ function formatDuration(ms) {
     return `${h}小时${m}分钟`;
 }
 
+function formatRemaining(ms) {
+    if (ms <= 0) return '0m';
+    const totalMin = Math.floor(ms / 60000);
+    if (totalMin < 60) return `${totalMin}m`;
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    return m > 0 ? `${h}h${m}m` : `${h}h`;
+}
+
+function formatClock(ts) {
+    const d = new Date(ts);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function getActivityEmoji(count) {
+    if (count <= 29) return '🟢';
+    if (count <= 53) return '🟡';
+    if (count <= 79) return '🟠';
+    return '🔴';
+}
+
 async function render() {
     const data = await chrome.storage.local.get(['detected', 'modelHistory', 'currentModel', 'messageTimestamps']);
     const history = data.modelHistory || [];
@@ -18,8 +39,6 @@ async function render() {
     const now = Date.now();
 
     const isMini = currentModel ? String(currentModel).toLowerCase().includes('mini') : false;
-
-    // 当前模型卡片
     const modelColor = isMini ? '#f38ba8' : '#a6e3a1';
     const modelEmoji = isMini ? '🔴' : '🟢';
     const badgeText = currentModel || '未检测';
@@ -32,24 +51,108 @@ async function render() {
     let currentTurns = 0, currentDurMs = 0;
     if (currentModel && history.length > 0 && history[0].model === currentModel && history[0].timestamp) {
         currentTurns = history[0].turns || 0;
-        currentDurMs = Date.now() - history[0].timestamp;
+        currentDurMs = now - history[0].timestamp;
     }
     const currentDurStr = formatDuration(currentDurMs);
+
+    const lastActiveTs = (currentModel && history.length > 0 && history[0].model === currentModel && history[0].lastActive) ? history[0].lastActive : (messageTimestamps.length > 0 ? messageTimestamps[messageTimestamps.length - 1] : null);
+    let activeTimeStr = '暂无';
+    if (lastActiveTs) {
+        const diff = now - lastActiveTs;
+        if (diff < 60000) {
+            activeTimeStr = '刚刚';
+        } else if (diff < 3600000) {
+            activeTimeStr = `${Math.floor(diff / 60000)}分钟前`;
+        } else {
+            const h = Math.floor(diff / 3600000);
+            const m = Math.floor((diff % 3600000) / 60000);
+            activeTimeStr = `${h}小时${m}分钟前`;
+        }
+    }
+
+    const ts1h = messageTimestamps.filter(t => now - t < 60 * 60 * 1000);
+    const ts3h = messageTimestamps.filter(t => now - t < 3 * 60 * 60 * 1000);
+    const ts24h = messageTimestamps.filter(t => now - t < 24 * 60 * 60 * 1000);
+
+    const count1h = ts1h.length;
+    const count3h = ts3h.length;
+    const count3hColor = count3h >= 160 ? '#f38ba8' : count3h >= 100 ? '#f9e2af' : '#a6e3a1';
+    const count24h = ts24h.length;
+    const statusEmoji = getActivityEmoji(count1h);
 
     document.getElementById('currentModelCard').innerHTML = `
         <div style="font-size:14px;font-weight:600;color:${modelColor};">${modelEmoji} ${badgeText}</div>
         <div style="font-size:12px;color:#cdd6f4;margin-top:3px;">${currentTurns}轮 | ${currentDurStr}</div>
-        <div style="font-size:11px;color:#585b70;margin-top:2px;">${startTimeStr}</div>
+        <div style="font-size:12px;color:#6c7086;margin-top:2px;">🕒 活跃 ${activeTimeStr}</div>
+        <div style="font-size:11px;color:#585b70;margin-top:2px;">📌 ${startTimeStr || ''}</div>
     `;
 
-    // ⏱️ 消息计数
-    const ts3h = messageTimestamps.filter(t => now - t < 3 * 60 * 60 * 1000);
-    const ts24h = messageTimestamps.filter(t => now - t < 24 * 60 * 60 * 1000);
+    document.getElementById('rightStats').innerHTML = `
+        <div style="font-size:13px;white-space:nowrap;">
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span>🔥 近1h</span>
+                    <span style="font-weight:600;">${count1h}</span>
+                    <span>${statusEmoji}</span>
+                    <span title="(160/3=53.33轮/小时)
+🟢0~29
+🟡30~53
+🟠54~79
+🔴80+" style="cursor:help;color:#585b70;font-size:11px;">ⓘ</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
+                    <span>⏳ 近3h</span>
+                    <span>
+                        <span style="font-weight:600;color:${count3hColor};">${count3h}</span>
+                        <span style="color:#6c7086;font-size:11px;"> / 160</span>
+                    </span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
+                    <span>📅 近24h</span>
+                    <span style="font-weight:600;">${count24h}</span>
+                </div>
+            </div>
+        `;
 
-    const msg3h = document.getElementById('msg3h');
-    msg3h.textContent = ts3h.length;
-    msg3h.className = 'msg-count' + (ts3h.length >= 160 ? ' danger' : ts3h.length >= 100 ? ' warn' : ' safe');
-    document.getElementById('msg24h').textContent = ts24h.length;
+    // 恢复预测
+    const recoveryEl = document.getElementById('recoveryPrediction');
+    if (ts3h.length === 0) {
+        recoveryEl.innerHTML = `
+            <div style="color:#585b70;font-size:12px;padding:6px 0;border-bottom:1px solid #313244;">
+                <div style="font-weight:500;color:#6c7086;margin-bottom:4px;">⌛ 恢复预测</div>
+                <div style="display:flex;justify-content:space-between;padding:2px 0;"><span style="color:#cdd6f4;">+1</span><span style="color:#585b70;">—</span></div>
+                <div style="display:flex;justify-content:space-between;padding:2px 0;"><span style="color:#cdd6f4;">+10</span><span style="color:#585b70;">—</span></div>
+                <div style="display:flex;justify-content:space-between;padding:2px 0;"><span style="color:#cdd6f4;">✓</span><span style="color:#585b70;">—</span></div>
+            </div>
+        `;
+    } else {
+        const sorted = [...ts3h].sort((a, b) => a - b);
+        const t1 = sorted[0] + 3 * 60 * 60 * 1000;
+        const r1 = Math.max(0, t1 - now);
+        const r1Str = formatRemaining(r1);
+        const t1Clock = formatClock(t1);
+
+        let r10Str = '—', t10Clock = '';
+        if (sorted.length >= 10) {
+            const t10 = sorted[9] + 3 * 60 * 60 * 1000;
+            const r10 = Math.max(0, t10 - now);
+            r10Str = formatRemaining(r10);
+            t10Clock = formatClock(t10);
+        }
+
+        const tAll = sorted[sorted.length - 1] + 3 * 60 * 60 * 1000;
+        const rAll = Math.max(0, tAll - now);
+        const rAllStr = formatRemaining(rAll);
+        const tAllClock = formatClock(tAll);
+
+        recoveryEl.innerHTML = `
+            <div style="color:#585b70;font-size:12px;padding:6px 0;border-bottom:1px solid #313244;">
+                <div style="font-weight:500;color:#6c7086;margin-bottom:4px;">⌛ 恢复预测</div>
+                <div style="display:flex;padding:2px 0;"><span style="color:#cdd6f4;width:30px;">+1</span><span style="color:#cdd6f4;flex:1;text-align:right;">${r1Str}</span><span style="color:#585b70;text-align:right;width:70px;">(${t1Clock})</span></div>
+                <div style="display:flex;padding:2px 0;"><span style="color:#cdd6f4;width:30px;">+10</span><span style="color:#cdd6f4;flex:1;text-align:right;">${r10Str}</span><span style="color:#585b70;text-align:right;width:70px;">${r10Str !== '—' ? `(${t10Clock})` : ''}</span></div>
+                <div style="display:flex;padding:2px 0;"><span style="color:#cdd6f4;width:30px;">✓</span><span style="color:#cdd6f4;flex:1;text-align:right;">${rAllStr}</span><span style="color:#585b70;text-align:right;width:70px;">(${tAllClock})</span></div>
+            </div>
+        `;
+    }
 
     // 历史记录（跳过当前模型）
     const list = document.getElementById('historyList');
@@ -73,7 +176,7 @@ async function render() {
             <div style="padding:6px 0;border-bottom:1px solid #313244;">
                 <div style="font-size:13px;font-weight:500;color:${c};">${emoji} ${modelName}</div>
                 <div style="font-size:12px;color:#cdd6f4;margin-top:2px;">${turnsStr}轮 | ${durStr}</div>
-                <div style="font-size:11px;color:#6c7086;margin-top:1px;">${timeStr}</div>
+                <div style="font-size:11px;color:#6c7086;margin-top:1px;">📌 ${timeStr}</div>
             </div>
         `;
     }).filter(Boolean).join('');
@@ -100,15 +203,16 @@ function showUsageInfo() {
             <div style="color:#89b4fa;font-size:15px;font-weight:600;margin:0 0 12px;">ℹ️ GPT-5.5 使用限制</div>
             <div class="info-section">
                 <div class="info-label">🆓 免费版</div>
-                <div class="info-detail"><span class="highlight">约10条/5小时</span>，超标自动降 <span class="info-warn">mini</span></div>
+                <div class="info-detail"><span class="highlight">约10轮/5小时</span>，超标自动降 <span class="info-warn">mini</span></div>
             </div>
             <div class="info-section">
                 <div class="info-label">⭐ Plus/Go</div>
-                <div class="info-detail"><span class="highlight">160条/3小时</span>，超标自动降 <span class="info-warn">mini</span></div>
+                <div class="info-detail"><span class="highlight">160轮/3小时</span>，超标自动降 <span class="info-warn">mini</span></div>
+                <div class="info-detail" style="color:#585b70;font-size:11px;margin-top:1px;">≈53轮/小时 ≈0.88轮/分钟</div>
             </div>
             <div class="info-section">
                 <div class="info-label">🧠 Thinking 模式</div>
-                <div class="info-detail">Plus 手动选;<span class="highlight">Go 10条/5小时</span></div>
+                <div class="info-detail">Plus 手动选;<span class="highlight">Go 10轮/5小时</span></div>
             </div>
             <div class="info-section">
                 <div class="info-label">💡 推测</div>
@@ -155,3 +259,4 @@ document.getElementById('clearHistoryBtn').addEventListener('click', clearHistor
 
 render();
 chrome.storage.onChanged.addListener(() => render());
+setInterval(render, 60000);
