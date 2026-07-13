@@ -55,10 +55,10 @@ async function render() {
     }
     const currentDurStr = formatDuration(currentDurMs);
 
-    const lastActiveTs = (currentModel && history.length > 0 && history[0].model === currentModel && history[0].lastActive) ? history[0].lastActive : (messageTimestamps.length > 0 ? messageTimestamps[messageTimestamps.length - 1] : null);
+    const lastTs = messageTimestamps.length > 0 ? messageTimestamps[messageTimestamps.length - 1] : null;
     let activeTimeStr = '暂无';
-    if (lastActiveTs) {
-        const diff = now - lastActiveTs;
+    if (lastTs) {
+        const diff = now - lastTs;
         if (diff < 60000) {
             activeTimeStr = '刚刚';
         } else if (diff < 3600000) {

@@ -10,13 +10,12 @@ let injectedTabs = new Set();
 // 消息计数（每 POST 一条 conversation 计 1 次）
 // ============================================
 function recordMessage() {
-    chrome.storage.local.get(['messageTimestamps'], (data) => {
+    chrome.storage.local.get(['messageTimestamps', 'modelHistory', 'currentModel'], (data) => {
         let ts = data.messageTimestamps || [];
         const now = Date.now();
         ts = ts.filter(t => now - t < 24 * 60 * 60 * 1000);
         ts.push(now);
         chrome.storage.local.set({ messageTimestamps: ts }, () => {
-            // 推送给所有 content script
             chrome.runtime.sendMessage({ type: 'MESSAGE_COUNT_UPDATED', timestamps: ts });
         });
     });
@@ -637,10 +636,10 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                     const count1h = ts1h.length;
                     const statusEmoji = count1h <= 29 ? '🟢' : count1h <= 53 ? '🟡' : count1h <= 79 ? '🟠' : '🔴';
 
-                    const lastActiveTs = (currentModel && modelHistory.length > 0 && modelHistory[0].model === currentModel && modelHistory[0].lastActive) ? modelHistory[0].lastActive : (messageTimestamps.length > 0 ? messageTimestamps[messageTimestamps.length - 1] : null);
+                    const lastTs = messageTimestamps.length > 0 ? messageTimestamps[messageTimestamps.length - 1] : null;
                     let activeTimeStr = '暂无';
-                    if (lastActiveTs) {
-                        const diff = now - lastActiveTs;
+                    if (lastTs) {
+                        const diff = now - lastTs;
                         if (diff < 60000) activeTimeStr = '刚刚';
                         else if (diff < 3600000) activeTimeStr = `${Math.floor(diff / 60000)}分钟前`;
                         else {
@@ -791,7 +790,6 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                         // 不依赖 messageTimestamps，避免跨 24h 后统计失真。
                         if (modelHistory.length > 0) {
                             modelHistory[0].turns = (modelHistory[0].turns || 0) + 1;
-                            modelHistory[0].lastActive = Date.now();
                             await saveToStorage({ modelHistory });
                         }
                         console.log(`ℹ️ [${_ts()}] [${_iid}] 模型未变化:`, modelName);
@@ -816,7 +814,7 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
 
                     // ✅ 更新内存（每次 SSE 解析到新模型，视为该模型的第一轮完成）
                     currentModel = modelName;
-                    modelHistory.unshift({ model: modelName, time: timeStr, timestamp: now.getTime(), turns: 1, duration: 0, lastActive: now.getTime() });
+                    modelHistory.unshift({ model: modelName, time: timeStr, timestamp: now.getTime(), turns: 1, duration: 0 });
                     if (modelHistory.length > 50) modelHistory = modelHistory.slice(0, 50);
 
                     // ✅ 更新 UI
