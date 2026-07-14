@@ -846,13 +846,18 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                             const decoder = new TextDecoder('utf-8');
                             let buffer = '';
                             let resolvedModel = null;
+                            let seenModelField = false;
 
                             function readStream() {
                                 reader.read().then(({ done, value }) => {
                                     if (done) {
-                                        console.log(`📡 [${_ts()}] [${_iid}] SSE 结束, resolvedModel:`, resolvedModel);
                                         if (resolvedModel) {
+                                            console.log(`📡 [${_ts()}] [${_iid}] SSE 结束, resolvedModel: ${resolvedModel}`);
                                             setTimeout(() => updateModel(resolvedModel), 500);
+                                        } else if (seenModelField) {
+                                            console.log(`📡 [${_ts()}] [${_iid}] SSE 结束, model unresolved (seen model field but no slug)`);
+                                        } else {
+                                            console.log(`📡 [${_ts()}] [${_iid}] SSE 结束, model unresolved (no model field in stream)`);
                                         }
                                         return;
                                     }
@@ -870,15 +875,28 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                                                 const data = JSON.parse(jsonStr);
 
                                                 let model = null;
-                                                if (data.metadata && data.metadata.resolved_model_slug) {
-                                                    model = data.metadata.resolved_model_slug;
-                                                } else if (data.v && data.v.message && data.v.message.metadata) {
-                                                    model = data.v.message.metadata.resolved_model_slug;
+
+                                                // 1) delta 事件: v.message.metadata 中的 model_slug
+                                                //    这是 assistant 实际生成当前回复的模型，优先级最高
+                                                if (data.v?.message?.metadata) {
+                                                    model = data.v.message.metadata.model_slug || data.v.message.metadata.resolved_model_slug || null;
+                                                }
+                                                // 2) 仅在还没有模型时，才从其他来源补充
+                                                if (!model && !resolvedModel) {
+                                                    if (data.type === 'server_ste_metadata' && data.metadata?.model_slug) {
+                                                        model = data.metadata.model_slug;
+                                                    } else if (data.metadata) {
+                                                        model = data.metadata.resolved_model_slug || data.metadata.model_slug || null;
+                                                    }
+                                                }
+
+                                                if (data.metadata || data.v?.message?.metadata) {
+                                                    seenModelField = true;
                                                 }
 
                                                 if (model) {
                                                     resolvedModel = model;
-                                                    console.log(`🎯 [${_ts()}] [${_iid}] 读到 resolved_model_slug:`, model);
+                                                    console.log(`🎯 [${_ts()}] [${_iid}] 读到模型:`, model);
                                                 }
                                             } catch (e) {}
                                         }
