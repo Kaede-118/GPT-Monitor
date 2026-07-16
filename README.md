@@ -1,15 +1,15 @@
 # 😺GPT-Monitor
 
 > 🚀 Chrome 扩展，实时监控 ChatGPT 当前使用的模型，并在切换到“降智”模型时发出醒目提醒。
+![Version](https://img.shields.io/badge/version-1.3.0-blue)
 
-![Version](https://img.shields.io/badge/version-1.3-blue)
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-green)
+
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
 ---
 
 ## ❔ 为啥写这个
-
 作者是 ChatGPT 重度用户，每天少说也聊个两三百轮，经常被自动路由到 **mini** 模型。
 
 有一次维护自己的 QQ 空间爬虫，要求 AI 输出完整代码时，它非常热心地帮忙“重构”了整个脚本。
@@ -44,6 +44,7 @@
 - **历史记录** — 最多保存 50 条模型切换记录，带时间戳
 - **使用量统计** — 监控近 3 小时内的消息数量，帮助追踪 GPT-5.5 额度消耗
 - **测试模式** — 一键切换显示样式，方便验证 UI 效果
+- **会话同步检测** — 检测当前对话是否在其他设备被更新，过期后自动刷新页面（可关闭）
 
 ---
 
@@ -246,7 +247,7 @@ MIT
 
 > 🚀 Chrome extension that monitors ChatGPT's current model in real time and alerts you when it switches to a "downgraded" (mini) model.
 
-![Version](https://img.shields.io/badge/version-1.3-blue)
+![Version](https://img.shields.io/badge/version-1.3.0-blue)
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
@@ -298,6 +299,7 @@ After all...
 - **History tracking** — Stores up to 50 model switches with timestamps
 - **Usage statistics** — Monitors messages in the last 3 hours to track GPT-5.5 quota consumption
 - **Test mode** — One-click display toggle to preview UI states
+- **Cloud sync detection** — Detects if the current conversation was updated on another device, auto-refreshes when outdated (toggleable)
 
 ---
 
