@@ -1,5 +1,74 @@
 # Changelog
 
+## [1.3.0] - 2026-07-16
+
+`fd231be`
+
+### Added
+- 导入 CloudSync 作为独立模块，检测 ChatGPT 会话是否在其他设备更新
+- 通过 WebSocket 事件驱动判断本地/远端消息，零轮询
+- 会话过期后 3 秒自动刷新页面（可关闭）
+- Popup 集成 CloudSync 状态显示和 Auto Refresh 开关
+- Logo Badge Dropdown 同步 CloudSync 状态和 Auto Refresh
+
+### Internal
+- CloudSync 文件独立存放于 cloudsync/ 目录
+- background 拆分为 background/monitor.js + background/cloudsync.js
+- Manifest 新增 CloudSync content_scripts（MAIN + ISOLATED）
+- content.js 新增 storage 读取桥接接口
+
+---
+
+## [1.2.3] - 2026-07-15
+
+`32248cf`
+
+### Fixed
+- 适配 ChatGPT conversation SSE 新格式：新增 delta/server_ste_metadata 事件类型，字段名从 resolved_model_slug 变为 model_slug
+- delta 事件的 v.message.metadata.model_slug 作为最高优先级
+- server_ste_metadata/metadata 仅在 delta 未提供时补充
+- 日志区分无模型字段和有字段但未解析到，减少误判
+
+---
+
+## [1.2.2] - 2026-07-13
+
+`aff74c7` `df68688` `0c28978`
+
+### Added
+- 使用统计面板：近 1h/3h/24h 消息频率统计
+- 额度恢复预测（+1/+10/全部恢复剩余时间）
+- 模型活跃追踪（最近活跃时间）
+- 无模型时默认渲染 GPT-Monitor 徽章
+- 监听 SPA 路由变化自动恢复徽章
+
+### Changed
+- Popup 与 Dropdown 布局优化，适配新统计面板
+- 使用限制面板补充恢复预测说明
+
+### Removed
+- modelHistory 的 lastActive 字段，统一使用 messageTimestamps 计算活跃时间
+
+---
+
+## [1.2.1] - 2026-07-01
+
+`b30f18a` `c595a41` `f2669f5` `99579f4`
+
+### Added
+- README 添加 😺 图标
+
+### Changed
+- 模型轮数（turns）由 updateModel() 实时维护，不再依赖 messageTimestamps 计算
+- Popup 当前模型持续时间改用实时计算
+- Popup ⓘ 使用限制改为内联替换，与 Dropdown 一致
+
+### Removed
+- ⓘ 使用限制 Modal 弹窗
+- recordMessage() 中冗余的轮数计算
+
+---
+
 ## [1.2.0] - 2026-06-29
 
 `f1c1be3` `97da4a5` `a28e89b` `6e61c70` `9c2d562` `5e812e8`
