@@ -163,17 +163,15 @@ popup / background — 展示模型、历史、图标
 }
 ```
 
-**响应中提取模型：**
-```json
-{
-  "metadata": {
-    "resolved_model_slug": "gpt-5-3-mini"  // ← 实际使用的模型
-  }
-}
-```
-> 备选路径：`v.message.metadata.resolved_model_slug`
+**响应中提取模型（均从 SSE data 的 JSON 解析）：**
 
-**核心逻辑：** 请求中的 `model` 是用户选的，**不能信**；`resolved_model_slug` 才是后端实际路由的模型。扩展只读取这个字段来判断是否被降智。
+| 优先级 | 路径 | 适用事件 |
+|--------|------|----------|
+| 最高 | `v.message.metadata.model_slug` | delta 事件（assistant 实际回复模型） |
+| 备选 | `data.metadata.model_slug` | server_ste_metadata 事件 |
+| 兜底 | `data.metadata.resolved_model_slug` / `data.metadata.model_slug` | 其他事件 |
+
+**核心逻辑：** 请求中的 `model` 是用户选的，**不能信**；扩展从 SSE 流中按优先级提取模型字段来判断是否被降智。
 
 ---
 
@@ -418,17 +416,15 @@ The extension intercepts ChatGPT's conversation API to get the actual model in u
 }
 ```
 
-**Model extracted from response:**
-```json
-{
-  "metadata": {
-    "resolved_model_slug": "gpt-5-3-mini"  // ← Actual model in use
-  }
-}
-```
-> Alternative path: `v.message.metadata.resolved_model_slug`
+**Model extracted from response (from SSE data JSON):**
 
-**Key insight:** The `model` in the request is what the user selected — **don't trust it**. `resolved_model_slug` is what the backend actually routes to. The extension only reads this field to determine if you've been downgraded.
+| Priority | Path | Event Type |
+|----------|------|------------|
+| Highest | `v.message.metadata.model_slug` | delta (actual assistant model) |
+| Fallback | `data.metadata.model_slug` | server_ste_metadata |
+| Last resort | `data.metadata.resolved_model_slug` / `data.metadata.model_slug` | others |
+
+**Key insight:** The `model` in the request is what the user selected — **don't trust it**. The extension extracts the actual model from the SSE stream using the priority order above.
 
 ---
 
