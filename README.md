@@ -28,7 +28,7 @@
 
 于是有了 **GPT-Monitor**。
 
-它会实时监控 ChatGPT 后端实际路由到的模型（`resolved_model_slug`），当切换到 mini 模型时第一时间提醒你，让你在执行“生成完整代码”“大规模重构”“一次性修改整个项目”等高风险操作之前，多一个判断依据。
+它会实时监控 ChatGPT 后端实际路由到的模型（从 SSE 流中解析模型字段），当切换到 mini 模型时第一时间提醒你，让你在执行“生成完整代码”“大规模重构”“一次性修改整个项目”等高风险操作之前，多一个判断依据。
 
 毕竟……
 
@@ -129,7 +129,7 @@ GPT-Monitor/
 ChatGPT 页面（MAIN 世界）
     │
     ▼ 拦截 /backend-api/... 的 SSE 数据
-提取 resolved_model_slug
+提取模型字段
     │
     ▼ postMessage
 content.js（隔离世界）— 桥接到 chrome.storage
@@ -138,7 +138,7 @@ content.js（隔离世界）— 桥接到 chrome.storage
 popup / background — 展示模型、历史、图标
 ```
 
-1. **页面主世界** 拦截 ChatGPT 的 `fetch` 响应，提取 `resolved_model_slug`
+1. **页面主世界** 拦截 ChatGPT 的 `fetch` 响应，从 SSE 流中提取模型字段
 2. 通过 **postMessage** 发送给 content script（隔离世界）
 3. **content.js** 写入 `chrome.storage.local`
 4. **Popup / background** 读取 storage，更新 UI
@@ -281,7 +281,7 @@ Instead of finding out after something goes wrong, it's much better to know befo
 
 That's why **GPT-Monitor** exists.
 
-GPT-Monitor monitors the actual model selected by the ChatGPT backend (`resolved_model_slug`) and alerts you whenever the conversation is routed to a mini model, so you have one more piece of information before asking AI to generate full source code, perform large-scale refactors, or modify an entire project.
+GPT-Monitor monitors the actual model selected by the ChatGPT backend (parsed from the SSE stream) and alerts you whenever the conversation is routed to a mini model, so you have one more piece of information before asking AI to generate full source code, perform large-scale refactors, or modify an entire project.
 
 After all...
 
@@ -382,7 +382,7 @@ GPT-Monitor/
 ChatGPT Page (MAIN world)
     │
     ▼ Intercepts /backend-api/... SSE data
-Extracts resolved_model_slug
+Extracts model field
     │
     ▼ postMessage
 content.js (isolated world) — bridges to chrome.storage
@@ -391,7 +391,7 @@ content.js (isolated world) — bridges to chrome.storage
 popup / background — displays model, history, badge
 ```
 
-1. **Page main world** intercepts ChatGPT's `fetch` responses and extracts `resolved_model_slug`
+1. **Page main world** intercepts ChatGPT's `fetch` responses and extracts the model field from SSE stream
 2. Sends via **postMessage** to content script (isolated world)
 3. **content.js** writes to `chrome.storage.local`
 4. **Popup / background** read storage and update UI
