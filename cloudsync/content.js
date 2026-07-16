@@ -60,6 +60,7 @@ window.addEventListener('message', function (event) {
         chrome.runtime.sendMessage({ type: 'cloudsync-ws-event', data: data.data });
 
     } else if (data.type === 'cloudsync-ws-turn-complete') {
+        console.log('[CloudSync] content 收到 ws-turn-complete, 发送到 background');
         chrome.runtime.sendMessage({ type: 'cloudsync-ws-turn-complete', conversation_id: data.conversation_id });
 
     } else if (data.type === 'cloudsync-sse-complete') {
@@ -80,7 +81,7 @@ chrome.runtime.sendMessage({ type: 'cloudsync-page-init', url: location.href });
 // ============================================
 // Debug 面板
 // ============================================
-var DEBUG_MAX = 80;
+var DEBUG_MAX = 200;
 var debugLogs = [];
 var debugCollapsed = true;
 var debugPanel = null;
@@ -322,27 +323,10 @@ chrome.storage.onChanged.addListener(function (changes, area) {
     }
 });
 
-// ============================================
-// 监听 background 日志 → Debug 面板
-// ============================================
-chrome.storage.onChanged.addListener(function (changes, area) {
-    if (area !== 'local') return;
-    if (changes['cloudsync:bglog']) {
-        var oldArr = changes['cloudsync:bglog'].oldValue || [];
-        var newArr = changes['cloudsync:bglog'].newValue || [];
-        for (var i = oldArr.length; i < newArr.length; i++) {
-            debugPanelAdd(newArr[i]);
-        }
-    }
-});
-
-chrome.storage.local.get(['cloudsync:bglog', 'cloudsync:injlog'], function (data) {
-    var bg = data['cloudsync:bglog'] || [];
+chrome.storage.local.get('cloudsync:injlog', function (data) {
     var inj = data['cloudsync:injlog'] || [];
-    var all = bg.concat(inj);
-    all.sort();
-    for (var i = 0; i < all.length; i++) {
-        debugPanelAdd(all[i]);
+    for (var i = 0; i < inj.length; i++) {
+        debugPanelAdd(inj[i]);
     }
 });
 

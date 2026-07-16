@@ -71,7 +71,7 @@ function doInject(tabId) {
     injectedTabs.add(tabId);
 
     // ✅ 读取 storage，直接传给页面主世界
-    chrome.storage.local.get(['currentModel', 'modelHistory', 'detected', 'messageTimestamps'], (storageData) => {
+    chrome.storage.local.get(['currentModel', 'modelHistory', 'detected', 'messageTimestamps']).then((storageData) => {
         console.log('📦 注入时携带 storage:', storageData);
 
         chrome.scripting.executeScript({
@@ -184,7 +184,10 @@ function doInject(tabId) {
                 }
                 async function fetchCloudSyncState() {
                     try {
-                        var result = await readFromStorage(['cloudsync', 'cloudsync:autoRefresh']);
+                        var result = await Promise.race([
+                            readFromStorage(['cloudsync', 'cloudsync:autoRefresh']),
+                            new Promise(function (_, reject) { setTimeout(reject, 3000); })
+                        ]);
                         if (result && result['cloudsync']) cloudsyncState = result['cloudsync'];
                         if (result && result['cloudsync:autoRefresh'] !== undefined) {
                             cloudsyncAutoRefresh = result['cloudsync:autoRefresh'] !== false;
@@ -329,18 +332,23 @@ function doInject(tabId) {
 // ====================================
 // 渲染 Logo 旁边的模型徽章（放在 Logo 按钮右边）
 // ====================================
-function renderLogoBadge(modelName, isMini) {
+function renderLogoBadge(modelName, isMini, retryCount) {
     const hasModel = !!currentModel;
     const badgeBg = !hasModel ? 'rgba(108,112,134,0.15)' : (isMini ? '#dc2626' : 'rgba(34,197,94,0.15)');
     const badgeColor = !hasModel ? '#a6adc8' : (isMini ? '#ffffff' : '#22c55e');
     const badgeBorder = !hasModel ? '1px solid rgba(108,112,134,0.25)' : (isMini ? '1px solid #dc2626' : '1px solid rgba(34,197,94,0.3)');
-    console.log('🔄 renderLogoBadge:', modelName, isMini);
+    console.log('🔄 renderLogoBadge:', modelName, isMini, 'retry:', retryCount);
 
     // ✅ 找模型选择器按钮（ChatGPT logo）
     const logoBtn = document.querySelector('button[aria-label="模型选择器"]');
     if (!logoBtn) {
+        const nextRetry = (retryCount || 0) + 1;
+        if (nextRetry > 15) {
+            console.log('⏹️ 模型选择器按钮重试超时，停止');
+            return;
+        }
         console.log('⏳ 等待模型选择器按钮...');
-        setTimeout(() => renderLogoBadge(modelName, isMini), 500);
+        setTimeout(() => renderLogoBadge(modelName, isMini, nextRetry), 2000);
         return;
     }
     console.log('✅ 找到模型选择器按钮');
@@ -788,11 +796,8 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                             </div>
                             ${recoveryHtml}
                             <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #313244;">
-                                <span style="font-size:13px;">☁ <span id="cs-status" style="color:#6c7086;">-</span></span>
-                                <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6c7086;cursor:pointer;">
-                                    Auto Refresh
-                                    <input type="checkbox" id="cs-autorefresh" style="accent-color:#89b4fa;">
-                                </label>
+                                <span style="font-size:12px;color:#6c7086;">☁️ 云端有消息更新时自动刷新</span>
+                                <input type="checkbox" id="cs-autorefresh" style="accent-color:#89b4fa;width:16px;height:16px;cursor:pointer;">
                             </div>
                             <div style="color:#585b70;font-size:11px;padding:6px 0;">模型切换历史</div>
                             <div style="max-height:220px;overflow-y:auto;">
@@ -833,18 +838,10 @@ function renderMoreButtonBadge(modelName, isMini, retryCount) {
                         await updateModel(model);
                     });
 
-                    // CloudSync 状态
-                    var csStatusEl = document.getElementById('cs-status');
+                    // CloudSync Auto Refresh 开关
                     var csToggleEl = document.getElementById('cs-autorefresh');
-                    if (csStatusEl && cloudsyncState && cloudsyncState.state) {
-                        var sv = cloudsyncState.state.value;
-                        if (sv === 'SYNCED') { csStatusEl.textContent = 'Synced'; csStatusEl.style.color = '#a6e3a1'; }
-                        else if (sv === 'OUTDATED') { csStatusEl.textContent = 'Outdated'; csStatusEl.style.color = '#f38ba8'; }
-                        else if (sv === 'NO_TOKEN') { csStatusEl.textContent = 'Waiting Token'; csStatusEl.style.color = '#f9e2af'; }
-                        else if (sv === 'ERROR') { csStatusEl.textContent = 'Error'; csStatusEl.style.color = '#f38ba8'; }
-                        else { csStatusEl.textContent = 'Initializing...'; csStatusEl.style.color = '#6c7086'; }
-                    }
                     if (csToggleEl) {
+                        await fetchCloudSyncState();
                         csToggleEl.checked = cloudsyncAutoRefresh;
                         csToggleEl.addEventListener('change', function(e) {
                             e.stopPropagation();

@@ -195,7 +195,7 @@
                             if (msg) {
                                 var snippet = msg.content && msg.content.parts && msg.content.parts[0] ? msg.content.parts[0].slice(0, 60) : '';
                                 var isLocal = msg.id && localMessageIds.has(msg.id);
-                                var recentSSE = Date.now() - sseStreamEndTime < 15000;
+                                var recentSSE = Date.now() - sseStreamEndTime < 60000;
                                 var skip = isLocal || recentSSE;
                                 var model = msg.metadata && msg.metadata.model_slug || '';
                                 debugLog('WS conversation-update id=' + msg.id + ' role=' + (msg.author && msg.author.role) + ' status=' + msg.status + ' model=' + model + (skip ? ' LOCAL_SKIP' : '') + ' content="' + snippet + '"');
@@ -211,10 +211,11 @@
                             messages[i].payload &&
                             messages[i].payload.type === 'conversation-turn-complete') {
                             var convId = messages[i].payload.payload && messages[i].payload.payload.conversation_id;
-                            var recentEnd = sseStreamEndTime !== 0 && Date.now() - sseStreamEndTime < 30000;
+                            var recentEnd = sseStreamEndTime !== 0 && Date.now() - sseStreamEndTime < 60000;
                             var idle = !sseStreamActive && !recentEnd;
                             debugLog('WS conversation-turn-complete conv=' + convId + (idle ? ' -> OUTDATED' : ' BLOCKED'));
                             if (!idle) continue;
+                            debugLog('postMessage cloudsync-ws-turn-complete conv=' + convId);
                             window.postMessage({ type: 'cloudsync-ws-turn-complete', conversation_id: convId }, '*');
                             continue;
                         }
