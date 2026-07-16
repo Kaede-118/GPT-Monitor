@@ -89,6 +89,15 @@
             <div id="rightStats"></div>
         </div>
         <div id="recoveryPrediction"></div>
+        <div style="border-bottom:1px solid #313244;padding:6px 0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:13px;">☁ <span id="cloudsyncStatus" style="color:#6c7086;">-</span></span>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6c7086;cursor:pointer;">
+                    Auto Refresh
+                    <input type="checkbox" id="autoRefreshToggle" style="accent-color:#89b4fa;">
+                </label>
+            </div>
+        </div>
         <div style="color:#585b70;font-size:11px;padding:6px 0;">模型切换历史</div>
         <div class="history" id="historyList">
             <div style="padding:8px 0;color:#6c7086;text-align:center;font-size:12px;">暂无切换记录</div>
@@ -99,6 +108,8 @@
         </div>
     </div>
 
+    <script src="cloudsync/config.js"></script>
+    <script src="cloudsync/sync-state.js"></script>
     <script src="popup.js"></script>
 </body>
 </html>

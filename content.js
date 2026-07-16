@@ -20,6 +20,14 @@ window.addEventListener('message', function(event) {
                     }, '*');
                 });
             });
+        } else if (type === 'GET_STORAGE') {
+            chrome.storage.local.get(data.keys || null, (result) => {
+                window.postMessage({
+                    id: id,
+                    response: result,
+                    target: 'page'
+                }, '*');
+            });
         }
     }
 });
@@ -31,11 +39,26 @@ window.addEventListener('message', function(event) {
 // 监听 storage 变化，实时推送消息计数到 MAIN world
 // ============================================
 chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.messageTimestamps) {
+    if (area !== 'local') return;
+    if (changes.messageTimestamps) {
         window.postMessage({
             type: 'TIMESTAMPS_UPDATED',
             timestamps: changes.messageTimestamps.newValue || [],
             target: 'storage'
+        }, '*');
+    }
+    if (changes['cloudsync']) {
+        window.postMessage({
+            type: 'CLOUDSYNC_STATE_UPDATED',
+            state: changes['cloudsync'].newValue || null,
+            target: 'page'
+        }, '*');
+    }
+    if (changes['cloudsync:autoRefresh'] !== undefined) {
+        window.postMessage({
+            type: 'CLOUDSYNC_AUTOREFRESH_UPDATED',
+            autoRefresh: changes['cloudsync:autoRefresh'].newValue !== false,
+            target: 'page'
         }, '*');
     }
 });

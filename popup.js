@@ -180,6 +180,45 @@ async function render() {
             </div>
         `;
     }).filter(Boolean).join('');
+
+    renderCloudSync();
+}
+
+function renderCloudSync() {
+    chrome.storage.local.get('cloudsync', function (data) {
+        var saved = data['cloudsync'] || {};
+        var state = saved.state || SyncState.UNKNOWN;
+        var el = document.getElementById('cloudsyncStatus');
+        if (!el) return;
+        switch (state.value) {
+            case 'SYNCED':
+                el.textContent = 'Synced';
+                el.style.color = '#a6e3a1';
+                break;
+            case 'OUTDATED':
+                el.textContent = 'Outdated';
+                el.style.color = '#f38ba8';
+                break;
+            case 'NO_TOKEN':
+                el.textContent = 'Waiting Token';
+                el.style.color = '#f9e2af';
+                break;
+            case 'ERROR':
+                el.textContent = 'Error';
+                el.style.color = '#f38ba8';
+                break;
+            default:
+                el.textContent = 'Initializing...';
+                el.style.color = '#6c7086';
+                break;
+        }
+    });
+    chrome.storage.local.get(CloudSyncConfig.AUTO_REFRESH_KEY, function (data) {
+        var toggle = document.getElementById('autoRefreshToggle');
+        if (toggle) {
+            toggle.checked = data[CloudSyncConfig.AUTO_REFRESH_KEY] !== false;
+        }
+    });
 }
 
 async function clearHistory() {
@@ -257,6 +296,16 @@ const testBtnHandler = async () => {
 document.getElementById('testBtn').addEventListener('click', testBtnHandler);
 document.getElementById('clearHistoryBtn').addEventListener('click', clearHistory);
 
+document.addEventListener('change', function (event) {
+    if (event.target.id === 'autoRefreshToggle') {
+        var data = {};
+        data[CloudSyncConfig.AUTO_REFRESH_KEY] = event.target.checked;
+        chrome.storage.local.set(data);
+    }
+});
+
 render();
-chrome.storage.onChanged.addListener(() => render());
+chrome.storage.onChanged.addListener(function () {
+    render();
+});
 setInterval(render, 60000);

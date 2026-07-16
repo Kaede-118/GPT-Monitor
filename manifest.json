@@ -25,6 +25,17 @@
             "matches": ["https://chatgpt.com/*", "https://*.chatgpt.com/*"],
             "js": ["content.js"],
             "run_at": "document_start"
+        },
+        {
+            "matches": ["https://chatgpt.com/*", "https://*.chatgpt.com/*"],
+            "js": ["cloudsync/inject.js"],
+            "world": "MAIN",
+            "run_at": "document_start"
+        },
+        {
+            "matches": ["https://chatgpt.com/*", "https://*.chatgpt.com/*"],
+            "js": ["cloudsync/content.js"],
+            "run_at": "document_start"
         }
     ],
     "web_accessible_resources": [
